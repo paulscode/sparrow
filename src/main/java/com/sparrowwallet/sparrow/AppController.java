@@ -275,7 +275,7 @@ public class AppController implements Initializable {
             closeTab.setDisable(tabs.getTabs().isEmpty());
             if(tabs.getTabs().isEmpty()) {
                 Stage tabStage = (Stage) tabs.getScene().getWindow();
-                tabStage.setTitle("Sparrow");
+                tabStage.setTitle(SparrowWallet.APP_DISPLAY_NAME);
                 saveTransaction.setVisible(true);
                 saveTransaction.setDisable(true);
                 exportWallet.setDisable(true);
@@ -476,7 +476,7 @@ public class AppController implements Initializable {
             MenuItem settings = new MenuItem("Settings...");
             settings.setOnAction(this::openSettings);
             settings.setAccelerator(new KeyCodeCombination(KeyCode.COMMA, KeyCombination.META_DOWN));
-            Menu defaultApplicationMenu = new Menu("Apple", null, tk.createAboutMenuItem(SparrowWallet.APP_NAME, getAboutStage()), new SeparatorMenuItem(),
+            Menu defaultApplicationMenu = new Menu("Apple", null, tk.createAboutMenuItem(SparrowWallet.APP_DISPLAY_NAME, getAboutStage()), new SeparatorMenuItem(),
                     settings, new SeparatorMenuItem(),
                     tk.createHideMenuItem(SparrowWallet.APP_NAME), tk.createHideOthersMenuItem(), tk.createUnhideAllMenuItem(), new SeparatorMenuItem(),
                     tk.createQuitMenuItem(SparrowWallet.APP_NAME));
@@ -566,7 +566,7 @@ public class AppController implements Initializable {
             }
 
             Stage stage = new Stage(StageStyle.UNDECORATED);
-            stage.setTitle("About " + SparrowWallet.APP_NAME);
+            stage.setTitle("About " + SparrowWallet.APP_DISPLAY_NAME);
             stage.initOwner(tabs.getScene().getWindow());
             stage.initModality(Modality.WINDOW_MODAL);
             stage.setResizable(false);
@@ -2894,7 +2894,7 @@ public class AppController implements Initializable {
                         .graphic(new DialogImage(DialogImage.Type.SPARROW))
                         .hideAfter(Duration.seconds(15))
                         .position(Pos.TOP_RIGHT)
-                        .threshold(5, Notifications.create().title("Sparrow").text("Multiple new wallet transactions").graphic(new DialogImage(DialogImage.Type.SPARROW)))
+                        .threshold(5, Notifications.create().title(SparrowWallet.APP_DISPLAY_NAME).text("Multiple new wallet transactions").graphic(new DialogImage(DialogImage.Type.SPARROW)))
                         .onAction(e -> selectTab(event.getWallet()));
 
                 //If controlsfx can't find our window, we must set the window ourselves (unfortunately notification is then shown within this window)

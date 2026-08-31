@@ -618,7 +618,7 @@ public class AppServices {
             Scene scene = new Scene(root);
             scene.getStylesheets().add(AppServices.class.getResource("app.css").toExternalForm());
 
-            stage.setTitle("Sparrow");
+            stage.setTitle(SparrowWallet.APP_DISPLAY_NAME);
             stage.setMinWidth(650);
             stage.setMinHeight(708);
             stage.setScene(scene);

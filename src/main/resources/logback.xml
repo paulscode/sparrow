@@ -41,12 +41,16 @@
 
     <contextListener class="ch.qos.logback.classic.jul.LevelChangePropagator"/>
 
+    <!-- Must match SparrowWallet.APP_NAME lowercased. Logback cannot read a Java constant, so this is the one place the
+         application's on-disk name is repeated, and it is repeated in a file nothing type-checks. Left as upstream's
+         "sparrow" it sends this build's log into an upstream Sparrow's state directory, which both creates that directory
+         for someone who never installed upstream and has two applications appending to one file. -->
     <define name="appDir" class="com.sparrowwallet.drongo.PropertyDefiner">
-        <application>sparrow</application>
+        <application>sparrowblake2b</application>
     </define>
 
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
-        <file>${appDir}/sparrow.log</file>
+        <file>${appDir}/sparrowblake2b.log</file>
         <encoder>
             <pattern>%date %level [%thread] %logger{10} [%file:%line] %msg%n</pattern>
         </encoder>
