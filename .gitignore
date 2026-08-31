@@ -7,3 +7,6 @@ out
 *.log
 build-*.sh
 .DS_Store
+# Release artifacts, staged locally for signing and publishing. Not committed: they are large,
+# reproducible from the workflow, and published as GitHub release assets instead.
+builds/
