@@ -131,7 +131,9 @@ test {
         excludeTags 'checkpoint'
     }
     jvmArgs = ["--enable-native-access=ALL-UNNAMED"]
-    systemProperty 'sparrow.home', layout.buildDirectory.dir('test-home').get().asFile.absolutePath
+    //Must match ApplicationDir.getHomeProperty(SparrowWallet.APP_NAME), which is APP_NAME lowercased plus ".home".
+    //Renaming APP_NAME without this leaves the tests writing into the real user directory instead of the build.
+    systemProperty 'sparrowblake2b.home', layout.buildDirectory.dir('test-home').get().asFile.absolutePath
 }
 
 tasks.register('verifyCheckpoint', Test) {
@@ -149,6 +151,10 @@ tasks.register('verifyCheckpoint', Test) {
         exceptionFormat = 'full'
     }
 }
+
+//The packaged application name, distinct from upstream's "Sparrow" so the two coexist. Mirrors the split in
+//SparrowWallet between APP_NAME (identity) and APP_DISPLAY_NAME (what the user sees).
+def appImageName = 'Sparrow BLAKE2b'
 
 application {
     mainModule = 'com.sparrowwallet.sparrow'
@@ -180,7 +186,7 @@ application {
                                  "--add-reads=org.flywaydb.core=java.desktop"]
 
     if(os.macOsX) {
-        applicationDefaultJvmArgs += ["-Dprism.lcdtext=false", "-Xdock:name=Sparrow"]
+        applicationDefaultJvmArgs += ["-Dprism.lcdtext=false", "-Xdock:name=Sparrow (BLAKE2b)"]
     }
     if(headless) {
         applicationDefaultJvmArgs += ["-Dglass.platform=Headless"]
@@ -285,14 +291,18 @@ jlink {
     }
     addExtraDependencies("javafx")
     jpackage {
-        imageName = "Sparrow"
-        installerName = "Sparrow"
+        //Named apart from upstream so both can be installed at once. On macOS this is the .app bundle name, so an
+        //upstream Sparrow.app is left alone rather than replaced; elsewhere it is the directory inside the archive.
+        imageName = appImageName
+        installerName = appImageName
         appVersion = "${version}"
-        skipInstaller = os.macOsX || skipInstallers
+        //Upstream skips the macOS installer because its signing action builds and notarizes the .dmg afterwards. This
+        //build is unsigned, so there is no such step and jpackage has to produce the .dmg itself.
+        skipInstaller = skipInstallers
         imageOptions = []
         installerOptions = ['--file-associations', 'src/main/deploy/psbt.properties', '--file-associations', 'src/main/deploy/txn.properties', '--file-associations', 'src/main/deploy/asc.properties', '--license-file', 'LICENSE']
         if(os.windows) {
-            installerOptions.addAll(['--win-per-user-install', '--win-menu', '--win-menu-group', 'Sparrow', '--win-shortcut', '--resource-dir', 'src/main/deploy/package/windows/'])
+            installerOptions.addAll(['--win-per-user-install', '--win-menu', '--win-menu-group', 'Sparrow BLAKE2b', '--win-shortcut', '--resource-dir', 'src/main/deploy/package/windows/'])
             imageOptions.addAll(['--icon', 'src/main/deploy/package/windows/sparrow.ico'])
             installerType = "msi"
         }
@@ -302,13 +312,21 @@ jlink {
                 installerOptions = ['--license-file', 'LICENSE']
             } else {
                 installerName = "sparrowwallet"
-                installerOptions.addAll(['--linux-shortcut', '--linux-menu-group', 'Sparrow'])
+                installerOptions.addAll(['--linux-shortcut', '--linux-menu-group', 'Sparrow BLAKE2b'])
             }
             installerOptions.addAll(['--resource-dir', layout.buildDirectory.dir('deploy/package').get().asFile.toString(), '--linux-app-category', 'utils', '--linux-app-release', '1', '--linux-rpm-license-type', 'ASL 2.0', '--linux-deb-maintainer', 'mail@sparrowwallet.com'])
             imageOptions.addAll(['--icon', 'src/main/deploy/package/linux/Sparrow.png', '--resource-dir', 'src/main/deploy/package/linux/'])
         }
         if(os.macOsX) {
-            installerOptions.addAll(['--mac-sign', '--mac-signing-key-user-name', 'Craig Raw (UPLVMSK9D7)'])
+            //Upstream signs and notarizes with its own Apple Developer ID, which is not ours to use, so signing is not
+            //requested here. The resulting .dmg is unsigned and Gatekeeper refuses it on first launch; the release notes
+            //carry the right-click-Open instruction.
+            //
+            //--mac-package-identifier is what actually keeps the two apps apart on macOS. It becomes CFBundleIdentifier,
+            //which is how launchd, Launch Services and the quarantine database tell one application from another: two
+            //bundles sharing it are the same application as far as macOS is concerned, whatever they are named.
+            installerOptions.addAll(['--mac-package-identifier', 'com.paulscode.sparrowblake2b'])
+            imageOptions.addAll(['--mac-package-identifier', 'com.paulscode.sparrowblake2b'])
             imageOptions.addAll(['--icon', 'src/main/deploy/package/macos/sparrow.icns', '--resource-dir', 'src/main/deploy/package/macos/'])
             installerType = "dmg"
         }
@@ -353,7 +371,7 @@ tasks.register('prepareResourceDir', Copy) {
         if(file.name.equals('control') || file.name.endsWith('.spec')) {
             filter { line ->
                 if(line.contains('${size}')) {
-                    line = line.replace('${size}', getDirectorySize(layout.buildDirectory.dir('jpackage/Sparrow').get().asFile))
+                    line = line.replace('${size}', getDirectorySize(layout.buildDirectory.dir("jpackage/${appImageName}").get().asFile))
                 }
                 return line.replace('${version}', "${version}").replace('${arch}', osArch == 'aarch64' ? 'arm64' : 'amd64')
             }
@@ -364,7 +382,7 @@ tasks.register('prepareResourceDir', Copy) {
 tasks.register('copyMimeInfo', Copy) {
     mustRunAfter tasks.jpackageImage
     from('src/main/deploy/package/linux')
-    into(layout.buildDirectory.dir('jpackage/Sparrow/lib'))
+    into(layout.buildDirectory.dir("jpackage/${appImageName}/lib"))
     include('sparrowwallet-Sparrow-MimeInfo.xml')
 }
 
@@ -383,26 +401,26 @@ static def getDirectorySize(File directory) {
 }
 
 tasks.register('removeGroupWritePermission', Exec) {
-    commandLine 'chmod', '-R', 'g-w', "$buildDir/jpackage/Sparrow"
+    commandLine 'chmod', '-R', 'g-w', "$buildDir/jpackage/${appImageName}"
 }
 
 tasks.register('packageZipDistribution', Zip) {
-    archiveFileName = "Sparrow-${version}.zip"
+    archiveFileName = "Sparrow-BLAKE2b-${version}.zip"
     destinationDirectory = file("$buildDir/jpackage")
     preserveFileTimestamps = os.macOsX
     from("$buildDir/jpackage/") {
-        include "Sparrow/**"
-        include "Sparrow.app/**"
+        include "${appImageName}/**"
+        include "${appImageName}.app/**"
     }
 }
 
 tasks.register('packageTarDistribution', Tar) {
     dependsOn removeGroupWritePermission
-    archiveFileName = "sparrow${headless ? 'server': 'wallet'}-${version}-${releaseArch}.tar.gz"
+    archiveFileName = "sparrow${headless ? 'server': 'wallet'}-blake2b-${version}-${releaseArch}.tar.gz"
     destinationDirectory = file("$buildDir/jpackage")
     compression = Compression.GZIP
     from("$buildDir/jpackage/") {
-        include "Sparrow/**"
+        include "${appImageName}/**"
     }
 }
 

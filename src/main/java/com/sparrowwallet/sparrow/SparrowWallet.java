@@ -17,8 +17,27 @@ import java.io.File;
 import java.util.*;
 
 public class SparrowWallet {
-    public static final String APP_ID = "sparrow";
-    public static final String APP_NAME = "Sparrow";
+    //Distinct from upstream's "sparrow", so this build and an upstream Sparrow can be installed and run side by side.
+    //This reaches the single-instance lock and the macOS bundle identifier; sharing either would let one instance answer
+    //for the other.
+    public static final String APP_ID = "sparrowblake2b";
+
+    /**
+     * The application's identity on disk, which is deliberately not its display name.
+     *
+     * <p>Every directory comes from this: {@code ~/.sparrowblake2b} on Linux and macOS, {@code %APPDATA%\Sparrowblake2b}
+     * on Windows, plus the XDG variants and the {@code sparrowblake2b.home} property. Separating it from upstream's
+     * {@code Sparrow} is not tidiness. This build writes 164 byte header records where upstream writes 80, into a file
+     * indexed by height times that stride, so a shared header store would be discarded and re-downloaded by whichever
+     * application started last, forever. Sharing wallets across two different chains is the worse half.
+     *
+     * <p>No spaces or punctuation, because it becomes a directory name and a system property on three platforms.
+     */
+    public static final String APP_NAME = "SparrowBlake2b";
+
+    /** What the user sees: window titles, the About dialog, the macOS application menu, tray and notifications. */
+    public static final String APP_DISPLAY_NAME = "Sparrow (BLAKE2b)";
+
     public static final String APP_VERSION = "2.5.4";
     public static final String APP_VERSION_SUFFIX = "";
     public static final String APP_HOME_PROPERTY = ApplicationDir.getHomeProperty(APP_NAME);
@@ -46,7 +65,7 @@ public class SparrowWallet {
         }
 
         if(args.version) {
-            System.out.println("Sparrow Wallet " + APP_VERSION);
+            System.out.println(APP_DISPLAY_NAME + " " + APP_VERSION + APP_VERSION_SUFFIX);
             System.exit(0);
         }
 
