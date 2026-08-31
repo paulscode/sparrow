@@ -84,7 +84,7 @@ public class HeaderStoreTest {
 
         assertEquals(20, store.getTipHeight());
         assertEquals(chain.getLast().getHash(), store.getTipHash());
-        assertEquals(20 * HeaderStore.HEADER_LENGTH, storeFile("1").length());
+        assertEquals(20 * HeaderStore.headerLength(), storeFile("1").length());
 
         HeaderStore reloaded = HeaderStore.load(checkpoints());
         assertEquals(20, reloaded.getTipHeight());
@@ -108,7 +108,7 @@ public class HeaderStoreTest {
         //A header that does not link is refused before anything is written, so the store is left exactly as it was
         assertThrows(VerificationException.class, () -> store.append(chain.getLast()));
         assertEquals(1, store.getTipHeight());
-        assertEquals(HeaderStore.HEADER_LENGTH, storeFile("1").length());
+        assertEquals(HeaderStore.headerLength(), storeFile("1").length());
     }
 
     /**
@@ -129,7 +129,7 @@ public class HeaderStoreTest {
 
         assertEquals(2, store.getTipHeight());
         assertEquals(chain.getLast().getHash(), store.getTipHash());
-        assertEquals(2 * HeaderStore.HEADER_LENGTH, storeFile("1").length());
+        assertEquals(2 * HeaderStore.headerLength(), storeFile("1").length());
         assertEquals(2, HeaderStore.load(checkpoints()).getTipHeight());
     }
 
@@ -140,12 +140,12 @@ public class HeaderStoreTest {
         //The tip append is deliberately not synced, so a process killed mid write leaves a partial record
         try(RandomAccessFile randomAccessFile = new RandomAccessFile(storeFile("1"), "rw")) {
             randomAccessFile.seek(randomAccessFile.length());
-            randomAccessFile.write(new byte[HeaderStore.HEADER_LENGTH / 2]);
+            randomAccessFile.write(new byte[HeaderStore.headerLength() / 2]);
         }
 
         HeaderStore store = HeaderStore.load(checkpoints());
         assertEquals(10, store.getTipHeight());
-        assertEquals(10 * HeaderStore.HEADER_LENGTH, storeFile("1").length());
+        assertEquals(10 * HeaderStore.headerLength(), storeFile("1").length());
     }
 
     @Test
@@ -155,7 +155,7 @@ public class HeaderStoreTest {
 
         //Record 9 is the header at height 10, which no longer links to the header below it
         try(RandomAccessFile randomAccessFile = new RandomAccessFile(storeFile("1"), "rw")) {
-            long position = 9 * HeaderStore.HEADER_LENGTH + 4;
+            long position = 9 * HeaderStore.headerLength() + 4;
             randomAccessFile.seek(position);
             int previousHashByte = randomAccessFile.read();
             randomAccessFile.seek(position);
@@ -165,7 +165,7 @@ public class HeaderStoreTest {
         HeaderStore store = HeaderStore.load(checkpoints());
         assertEquals(9, store.getTipHeight());
         assertEquals(chain.get(8).getHash(), store.getTipHash());
-        assertEquals(9 * HeaderStore.HEADER_LENGTH, storeFile("1").length());
+        assertEquals(9 * HeaderStore.headerLength(), storeFile("1").length());
 
         //And the store carries on from there
         store.append(chain.get(9));
@@ -198,7 +198,7 @@ public class HeaderStoreTest {
         BlockHeader next = mineChain(chain.getLast(), 1).getFirst();
         store.append(next);
         assertEquals(11, store.getTipHeight());
-        assertEquals(11 * HeaderStore.HEADER_LENGTH, storeFile("1").length());
+        assertEquals(11 * HeaderStore.headerLength(), storeFile("1").length());
         assertEquals(next.getHash(), HeaderStore.load(checkpoints()).getHeader(11).getHash());
     }
 
@@ -301,7 +301,7 @@ public class HeaderStoreTest {
         HeaderStore reloaded = HeaderStore.load(checkpoints());
         assertEquals(11, reloaded.getTipHeight());
         assertEquals(branch.getFirst().getHash(), reloaded.getHeader(6).getHash());
-        assertEquals(11 * HeaderStore.HEADER_LENGTH, storeFile("1").length());
+        assertEquals(11 * HeaderStore.headerLength(), storeFile("1").length());
     }
 
     @Test
@@ -337,7 +337,9 @@ public class HeaderStoreTest {
     private static void writeStoreFile(String name, List<BlockHeader> headers) throws IOException {
         try(RandomAccessFile randomAccessFile = new RandomAccessFile(new File(Storage.getHeadersDir(), name), "rw")) {
             for(BlockHeader header : headers) {
-                randomAccessFile.write(header.bitcoinSerialize());
+                //Records, not serializations: the store indexes by height times a fixed stride, which on a network that can carry
+                //164 byte headers is wider than an 80 byte one. Writing the serialization would build a file the store cannot read
+                randomAccessFile.write(VariableHeaders.toRecord(header));
             }
         }
     }

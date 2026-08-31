@@ -55,7 +55,11 @@ import java.util.stream.Stream;
 public class ElectrumServer {
     private static final Logger log = LoggerFactory.getLogger(ElectrumServer.class);
 
-    static final String[] SUPPORTED_VERSIONS = new String[]{"1.3", "1.4.2"};
+    //1.8 adds variable-length headers; see VariableHeaders and docs/electrum-header-v2.md.
+    //A server on a chain with v2 headers refuses to negotiate below it, so advertising it
+    //is what makes such a chain reachable at all. Servers on every other chain negotiate
+    //1.4.2 as before, because the range is a minimum and a maximum.
+    static final String[] SUPPORTED_VERSIONS = new String[]{"1.3", "1.8"};
 
     private static final Version ELECTRS_MIN_BATCHING_VERSION = new Version("0.9.0");
 
@@ -1453,8 +1457,7 @@ public class ElectrumServer {
             try {
                 //Parsed whole here rather than one at a time below, so that a chunk carrying fewer headers than it claims is a refusal like any other
                 //malformed response rather than an exception escaping the sync
-                byte[] bytes = Utils.hexToBytes(chunk.hex);
-                headers = IntStream.range(0, chunk.count).mapToObj(i -> new BlockHeader(bytes, i * HeaderStore.HEADER_LENGTH)).toList();
+                headers = VariableHeaders.parse(chunk, chunk.count);
             } catch(ProtocolException | IllegalArgumentException e) {
                 //Refusal class, as a short chunk is: the server could not substantiate the range
                 throw new VerificationException("Server returned a malformed header chunk from height " + startHeight, e);
@@ -1488,8 +1491,7 @@ public class ElectrumServer {
 
         List<BlockHeader> candidate;
         try {
-            byte[] bytes = Utils.hexToBytes(chunk.hex);
-            candidate = IntStream.range(0, count).mapToObj(i -> new BlockHeader(bytes, i * HeaderStore.HEADER_LENGTH)).toList();
+            candidate = VariableHeaders.parse(chunk, count);
         } catch(ProtocolException | IllegalArgumentException e) {
             throw new VerificationException("Server returned a malformed header chunk when reconciling to height " + endHeight, e);
         }
@@ -1654,8 +1656,7 @@ public class ElectrumServer {
 
         List<BlockHeader> headers;
         try {
-            byte[] bytes = Utils.hexToBytes(chunk.hex);
-            headers = IntStream.range(0, count).mapToObj(i -> new BlockHeader(bytes, i * HeaderStore.HEADER_LENGTH)).toList();
+            headers = VariableHeaders.parse(chunk, count);
         } catch(ProtocolException | IllegalArgumentException e) {
             return null;
         }
@@ -2971,12 +2972,25 @@ public class ElectrumServer {
                             electrumServerRpc = new BatchedElectrumServerRpc(electrumServerRpc.getIdCounterValue(), serverCapability.getMaxTargetBlocks());
                         }
 
+                        ServerFeatures features = null;
                         if(serverCapability.supportsServerFeatures()) {
                             try {
-                                ServerFeatures features = electrumServer.getServerFeatures();
+                                features = electrumServer.getServerFeatures();
                                 serverCapability.withServerFeatures(features);
                             } catch(ElectrumServerRpcException e) {
                                 log.debug("Call to server.features failed for " + serverVersion, e);
+                            }
+                        }
+
+                        //Refuse a server on the other side of the chain split. On mainnet the two chains share a genesis block, a
+                        //network name and an address format, so every other check here passes against either, and the wallet would
+                        //show balances and confirmations for a chain the user did not choose. Not applied to a Bitcoin Core
+                        //connection: there the server is the user's own node and which chain it follows is a decision they already
+                        //made when they configured it.
+                        if(Config.get().getServerType() != ServerType.BITCOIN_CORE) {
+                            String chainError = VariableHeaders.getChainMismatchError(features);
+                            if(chainError != null) {
+                                throw new ServerException(chainError);
                             }
                         }
 
