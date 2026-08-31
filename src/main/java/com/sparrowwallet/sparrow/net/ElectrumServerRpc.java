@@ -172,7 +172,7 @@ public interface ElectrumServerRpc {
     }
 
     static BlockHeaders checkBlockHeaders(BlockHeaders blockHeaders, int startHeight, int count, Integer tip) throws VerificationException {
-        if(blockHeaders == null || blockHeaders.hex == null || blockHeaders.count < 0) {
+        if(blockHeaders == null || blockHeaders.count < 0) {
             throw new VerificationException("Malformed response to a request for " + count + " block headers from height " + startHeight);
         }
         if(blockHeaders.max < HeaderChainState.RETARGET_INTERVAL) {
@@ -181,9 +181,16 @@ public interface ElectrumServerRpc {
         if(blockHeaders.count > count) {
             throw new VerificationException("Requested " + count + " block headers from height " + startHeight + " but the server returned " + blockHeaders.count);
         }
-        if(blockHeaders.hex.length() != blockHeaders.count * BlockHeaders.HEADER_HEX_LENGTH) {
-            throw new VerificationException("Response to a request for block headers from height " + startHeight + " contains " + blockHeaders.hex.length() / 2
-                    + " bytes for " + blockHeaders.count + " headers");
+        //Counted rather than divided, because a header is 80 bytes or 164 and the run may hold both, and because the run arrives concatenated
+        //below protocol 1.6 and as a list at 1.6 and above. VariableHeaders reads either, without decoding anything here
+        int carried = VariableHeaders.countCarried(blockHeaders);
+        if(carried < 0) {
+            throw new VerificationException("Response to a request for " + count + " block headers from height " + startHeight
+                    + " does not hold a whole run of headers in either form");
+        }
+        if(carried != blockHeaders.count) {
+            throw new VerificationException("Response to a request for block headers from height " + startHeight + " carries " + carried
+                    + " headers for a reported count of " + blockHeaders.count);
         }
 
         if(blockHeaders.count < count && tip != null && startHeight + blockHeaders.count - 1 < tip) {
