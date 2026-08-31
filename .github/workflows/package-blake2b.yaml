@@ -1,0 +1,87 @@
+name: Package BLAKE2b
+
+# jpackage builds only for the host OS and architecture, so the five release artifacts need five
+# runners. This matrix is upstream's, minus the headless server build, which this fork does not ship.
+#
+# The macOS jobs produce an UNSIGNED .dmg. Upstream signs and notarizes with its own Apple Developer
+# ID, which is not ours to use, so that step is gone and Gatekeeper will refuse the app on first
+# launch until the user right-clicks Open or clears the quarantine attribute. That is documented in
+# the release notes rather than worked around.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  JDK_JAVAC_OPTIONS: '-Xlint:-module'
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-22.04, ubuntu-22.04-arm, macos-15-intel, macos-14]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          submodules: recursive
+
+      # Upstream does this for reproducibility: a pre-seeded tool cache can hold a different JDK
+      # build than the one requested below, and jlink bakes the JDK into the image.
+      - name: Clear Java tool-cache for reproducibility
+        shell: bash
+        run: rm -rf "$RUNNER_TOOL_CACHE"/Java_*
+
+      - name: Set up JDK 25.0.2
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5.5.0
+        with:
+          distribution: 'temurin'
+          java-version: '25.0.2'
+
+      - name: Show build versions
+        run: ./gradlew -v
+
+      # Run the suite before packaging. The header and difficulty rules this fork adds are consensus
+      # code in a wallet, so a red test must stop a release artifact from being produced at all.
+      - name: Test
+        run: ./gradlew :drongo:test test
+
+      - name: Build with Gradle
+        run: ./gradlew jpackage
+
+      - name: Package Windows zip distribution
+        if: ${{ runner.os == 'Windows' }}
+        run: ./gradlew packageZipDistribution
+
+      - name: Package Linux tar distribution
+        if: ${{ runner.os == 'Linux' }}
+        run: ./gradlew packageTarDistribution
+
+      # jpackage names the .dmg from installerName and version alone, so both macOS jobs would
+      # otherwise emit the same filename and the second would overwrite the first on the release.
+      - name: Name the macOS disk image for its architecture
+        if: ${{ runner.os == 'macOS' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          arch=$([ "$(uname -m)" = "arm64" ] && echo aarch64 || echo x86_64)
+          dmg=$(find build/jpackage -maxdepth 1 -name '*.dmg' | head -1)
+          [ -n "$dmg" ] || { echo "no .dmg produced"; ls -la build/jpackage; exit 1; }
+          version=$(basename "$dmg" .dmg | sed 's/^.*-//')
+          mv "$dmg" "build/jpackage/Sparrow-BLAKE2b-${version}-${arch}.dmg"
+          ls -la build/jpackage/*.dmg
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sparrow-blake2b-${{ runner.os }}-${{ runner.arch }}
+          # Only the distributable files. The unpacked app image and .app bundle are inputs to those
+          # archives, not things to publish, and together they are far larger than what they produce.
+          path: |
+            build/jpackage/*.dmg
+            build/jpackage/*.zip
+            build/jpackage/*.tar.gz
+          if-no-files-found: error
