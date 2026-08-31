@@ -322,11 +322,12 @@ jlink {
             //requested here. The resulting .dmg is unsigned and Gatekeeper refuses it on first launch; the release notes
             //carry the right-click-Open instruction.
             //
-            //--mac-package-identifier is what actually keeps the two apps apart on macOS. It becomes CFBundleIdentifier,
-            //which is how launchd, Launch Services and the quarantine database tell one application from another: two
-            //bundles sharing it are the same application as far as macOS is concerned, whatever they are named.
-            installerOptions.addAll(['--mac-package-identifier', 'com.paulscode.sparrowblake2b'])
-            imageOptions.addAll(['--mac-package-identifier', 'com.paulscode.sparrowblake2b'])
+            //The bundle identity lives in src/main/deploy/package/macos/Info.plist, not here. jpackage copies that file
+            //verbatim from --resource-dir and ignores --mac-package-identifier when it is present, which was verified by
+            //reading CFBundleIdentifier out of a built .dmg: it still said com.sparrowwallet.sparrow while this passed
+            //the flag. That identifier is what macOS uses to decide two bundles are the same application, so getting it
+            //from the wrong place means the two apps collide however they are named. The flag is not passed here because
+            //a setting that does nothing is worse than no setting.
             imageOptions.addAll(['--icon', 'src/main/deploy/package/macos/sparrow.icns', '--resource-dir', 'src/main/deploy/package/macos/'])
             installerType = "dmg"
         }
