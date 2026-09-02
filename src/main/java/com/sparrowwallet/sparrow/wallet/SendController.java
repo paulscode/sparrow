@@ -1110,7 +1110,16 @@ public class SendController extends WalletFormController implements Initializabl
 
         UnifiedSigHashDecision decision = AppServices.getUnifiedSigHashDecision(walletTransaction.getWallet());
         optInStatus.setVisible(true);
-        optInStatus.setText(decision.getSummary());
+        //The reason is shown on the label and not only in the tooltip. "Not replay protected" on its own
+        //reads as a fault in the wallet, when most of the time it is a question only the user can answer:
+        //nothing a device reports says whether its firmware produces the opt-in. Someone who does not know
+        //that has no reason to hover, so the one state they can act on would be the one they never read.
+        //The remedy stays in the tooltip, because it names a control on another screen and is a sentence
+        //rather than a label.
+        optInStatus.setText(decision.getReason() == null
+                ? decision.getSummary()
+                : decision.getSummary() + ", because " + decision.getReason());
+        optInStatus.setWrapText(true);
         optInStatus.setGraphic(decision.isOptedIn() ? GlyphUtils.getSuccessGlyph() : GlyphUtils.getWarningGlyph());
 
         //The one decision the user can act on is offered here rather than only described: the send screen is where
