@@ -76,8 +76,20 @@ import java.util.stream.Collectors;
 
 import static com.sparrowwallet.sparrow.AppController.CONNECTION_FAILED_PREFIX;
 import static com.sparrowwallet.sparrow.control.DownloadVerifierDialog.*;
+import java.util.concurrent.atomic.AtomicReference;
+import com.sparrowwallet.drongo.protocol.Blake2bDeployment;
+import com.sparrowwallet.drongo.psbt.PSBTInput;
+import com.sparrowwallet.drongo.protocol.TransactionSignature;
+import com.sparrowwallet.drongo.protocol.SigHash;
+import com.sparrowwallet.drongo.policy.Policy;
 
 public class AppServices {
+
+    //The activation height the connected node reports, and the last mismatch reported to the user, so
+    //a standing disagreement is announced once rather than on every tip.
+    private static volatile Integer nodeHardforkHeight;
+    private static final AtomicReference<String> lastReportedActivationHeightMismatch = new AtomicReference<>();
+
     private static final Logger log = LoggerFactory.getLogger(AppServices.class);
 
     private static final int SERVER_PING_PERIOD_SECS = 60;
@@ -776,6 +788,553 @@ public class AppServices {
 
     public static void setAnnouncedTip(ChainTip announcedTip) {
         AppServices.announcedTip = announcedTip;
+    }
+
+    /**
+     * Whether transactions this wallet creates should opt in to the unified signature hash.
+     *
+     * The fork carries both the BLAKE2b proof of work and the opt-in signature hash, and both take
+     * effect at the same block, so a chain tip carrying a v2 header is one where opting in is valid.
+     * Reading it from the chain rather than a configured height keeps this working on any network,
+     * including a regtest chain that activates at an arbitrary height, and leaves nothing to hold in
+     * sync with the node.
+     *
+     * This is one block later than the node's own answer, which asks whether the deployment is active
+     * for the block being built rather than for the tip. A transaction created in that one block is
+     * signed the legacy way: still valid and still relayed, it simply carries no replay protection.
+     * Erring in that direction is the safe one, since a signature that opts in before the rules apply
+     * would not verify at all.
+     */
+    public static boolean isUnifiedSigHashActive() {
+        //Read once: ChainTip carries the height and the header together so the decision cannot take the
+        //height of one block with the header of another, which two separate reads would allow.
+        ChainTip tip = announcedTip;
+        return isUnifiedSigHashActive(Network.get(), tip == null ? null : tip.height(), tip == null ? null : tip.header());
+    }
+
+    /**
+     * The activation height per network, or null where the fork is not scheduled.
+     *
+     * A height is the part of this decision a server cannot influence, which is why it comes first. On
+     * mainnet the fork has no schedule, so nothing a server says can make a wallet opt in; without that
+     * floor a hostile or intercepted server could serve a forged v2 header today and every transaction
+     * the wallet produced would be rejected by the network as an undefined hash type.
+     *
+     * Regtest chooses its own height through -testactivationheight, so there is nothing to hardcode and
+     * the chain is the only available answer there.
+     */
+    static Integer getUnifiedSigHashActivationHeight(Network network) {
+        //Held on the network alongside the checkpoints, so the header chain and this decision cannot hold different
+        //ideas of when the fork activates. The schedule has moved more than once before a final release, and each
+        //move replaced the chain that followed the old one, so it is not trusted on its own: isUnifiedSigHashActive
+        //cross-checks it against the connected node and declines rather than follow either side of a disagreement.
+        return Blake2bDeployment.activationHeight(network);
+    }
+
+    /**
+     * Records the hardfork height the connected node reports, or null where it reports none.
+     *
+     * Kept separate from the compiled-in schedule rather than replacing it. A height that ships with the
+     * wallet is the one thing in this decision a server cannot move, which is what stops a hostile server
+     * driving a mainnet wallet into producing signatures the network rejects. What the node says is used
+     * to notice that the shipped value has gone stale, not to override it.
+     */
+    public static void setNodeHardforkHeight(Integer height) {
+        nodeHardforkHeight = height;
+    }
+
+    static Integer getNodeHardforkHeight() {
+        return nodeHardforkHeight;
+    }
+
+    /**
+     * Forgets what the last node said. The value describes the connection it came from, so leaving it in
+     * place after a disconnect would let a height from one node keep deciding for another, including for
+     * an Electrum server that reports nothing at all.
+     */
+    public static void clearNodeHardforkHeight() {
+        nodeHardforkHeight = null;
+        lastReportedActivationHeightMismatch.set(null);
+        //The indicator describes a disagreement with a particular node, so it goes when that node does
+        EventManager.get().post(UnifiedSigHashScheduleEvent.resolved());
+    }
+
+    static boolean isUnifiedSigHashActive(Network network, Integer blockHeight, BlockHeader blockHeader) {
+        return chainDecision(network, blockHeight, blockHeader).isOptedIn();
+    }
+
+    /**
+     * As isUnifiedSigHashActive, keeping hold of the reason instead of reducing it to a boolean.
+     *
+     * The boolean form delegates here rather than the two carrying a copy of the same checks each, since
+     * a reason that drifts from the decision it explains is worse than no reason at all.
+     */
+    static UnifiedSigHashDecision chainDecision(Network network, Integer blockHeight, BlockHeader blockHeader) {
+        //Nothing has been heard from a chain, so nothing about one can be reported. Offline, and before the first
+        //tip of a session arrives
+        if(blockHeader == null) {
+            return UnifiedSigHashDecision.CHAIN_UNSEEN;
+        }
+
+        //A v2 header means the proof of work change is live, and both rule sets activate at the one block
+        if(!blockHeader.isV2()) {
+            return UnifiedSigHashDecision.CHAIN_NOT_ACTIVATED;
+        }
+
+        if(network == Network.REGTEST) {
+            return UnifiedSigHashDecision.OPTED_IN;
+        }
+
+        Integer activationHeight = getUnifiedSigHashActivationHeight(network);
+        //nodeHardforkHeight is read once here and passed by value. The callee null checks it and then
+        //dereferences it, which is only safe because it cannot be cleared between those two steps.
+        //Inlining this call so the field is read twice would reintroduce that race.
+        return heightDecision(activationHeight, nodeHardforkHeight, blockHeight);
+    }
+
+    /**
+     * The height comparison, with the shipped schedule and the node's schedule reconciled.
+     *
+     * Where the node reports a height and it differs from the one compiled in, one of the two is wrong
+     * and there is no way to tell which, so this refuses to opt in. A signature that does not opt in is
+     * always valid, while one made under the wrong schedule either fails to verify or forgoes the
+     * protection it claims, so declining is the only safe answer to a disagreement.
+     */
+    static boolean isUnifiedSigHashActive(Integer walletActivationHeight, Integer nodeActivationHeight, Integer blockHeight) {
+        return heightDecision(walletActivationHeight, nodeActivationHeight, blockHeight).isOptedIn();
+    }
+
+    /**
+     * As above, keeping the reason. The warnings stay here rather than moving to the caller, because they
+     * are reported once per distinct disagreement and a caller asking only to display a reason must not
+     * re-announce one that has already been reported.
+     */
+    static UnifiedSigHashDecision heightDecision(Integer walletActivationHeight, Integer nodeActivationHeight, Integer blockHeight) {
+        if(blockHeight == null) {
+            return UnifiedSigHashDecision.CHAIN_HEIGHT_UNKNOWN;
+        }
+
+        //A node that has scheduled the fork while this build has not is the case that matters on a network
+        //where the flagday is set after this build ships. Declining is right, since a height a node offers
+        //is not one this wallet can adopt without letting a compromised node choose the schedule, but it
+        //has to be said out loud: signing the legacy way past the flagday forgoes replay protection, and
+        //without this the operator gets no signal at all that an update is due.
+        if(walletActivationHeight == null) {
+            if(nodeActivationHeight != null) {
+                warnActivationHeightUnknown(nodeActivationHeight);
+            }
+            return UnifiedSigHashDecision.BUILD_HAS_NO_SCHEDULE;
+        }
+
+        if(nodeActivationHeight != null && !nodeActivationHeight.equals(walletActivationHeight)) {
+            warnActivationHeightMismatch(walletActivationHeight, nodeActivationHeight);
+            return UnifiedSigHashDecision.SCHEDULE_MISMATCH;
+        }
+
+        if(blockHeight < walletActivationHeight) {
+            return UnifiedSigHashDecision.BEFORE_ACTIVATION_HEIGHT;
+        }
+
+        //A node that reports no height cannot corroborate the shipped one. Opting in regardless is right, since
+        //declining because a server cannot answer would forgo the protection on every Electrum connection, but the
+        //cross check that would catch a stale build has not run and saying so is the difference this records.
+        if(nodeActivationHeight == null) {
+            noteScheduleUncorroborated(walletActivationHeight);
+            return UnifiedSigHashDecision.OPTED_IN_UNCORROBORATED;
+        }
+
+        return UnifiedSigHashDecision.OPTED_IN;
+    }
+
+    /**
+     * Logs a schedule disagreement once per distinct pair of heights rather than once per transaction.
+     * A stale build disagrees on every send, and the operator only needs telling once per connection.
+     * clearNodeHardforkHeight resets this so a reconnect reports again.
+     *
+     * getAndSet rather than a read followed by a write: two sends racing here would otherwise both see
+     * the old value and both log.
+     */
+    private static void warnActivationHeightMismatch(int walletActivationHeight, int nodeActivationHeight) {
+        if(isNewActivationHeightReport(walletActivationHeight + "/" + nodeActivationHeight)) {
+            log.warn("Not opting in to the unified signature hash: this build expects activation at height "
+                    + walletActivationHeight + " but the connected node reports " + nodeActivationHeight);
+            EventManager.get().post(UnifiedSigHashScheduleEvent.scheduleMismatch(walletActivationHeight, nodeActivationHeight));
+        }
+    }
+
+    /**
+     * Notes an opt-in taken without a node to corroborate it, once per connection rather than once per send.
+     *
+     * Logged rather than posted as an event: the status bar indicator is for a disagreement needing attention,
+     * and an Electrum server reporting no height is the normal case rather than a fault.
+     */
+    private static void noteScheduleUncorroborated(int walletActivationHeight) {
+        if(isNewActivationHeightReport("uncorroborated/" + walletActivationHeight)) {
+            log.info("Opting in to the unified signature hash on the height compiled into this build, "
+                    + walletActivationHeight + ": the connected node reports no activation height, so the shipped "
+                    + "schedule could not be cross checked against it.");
+        }
+    }
+
+    /**
+     * As above, for the case where the node has a schedule and this build has none for the network.
+     */
+    private static void warnActivationHeightUnknown(int nodeActivationHeight) {
+        if(isNewActivationHeightReport("unknown/" + nodeActivationHeight)) {
+            log.warn("Not opting in to the unified signature hash: the connected node schedules activation at height "
+                    + nodeActivationHeight + " but this build has no height for " + Network.get()
+                    + ". Transactions will be signed without replay protection until it is updated.");
+            EventManager.get().post(UnifiedSigHashScheduleEvent.scheduleUnknown(nodeActivationHeight, Network.get().toDisplayString()));
+        }
+    }
+
+    /**
+     * Whether this disagreement has not already been reported, recording it either way.
+     *
+     * getAndSet rather than a read followed by a write: two sends racing here would otherwise both see
+     * the old value and both report.
+     */
+    static boolean isNewActivationHeightReport(String report) {
+        return !report.equals(lastReportedActivationHeightMismatch.getAndSet(report));
+    }
+
+    /**
+     * The disagreement last reported, or null if none has been since the connection was established.
+     */
+    static String getLastActivationHeightReport() {
+        return lastReportedActivationHeightMismatch.get();
+    }
+
+    /**
+     * Whether every key that will sign is one this wallet holds.
+     *
+     * An external signer that has not implemented the opt-in either refuses the hash type outright or
+     * signs the legacy message while the PSBT declares the new one, and the resulting signature does not
+     * verify. Opting in is optional by design, so a wallet backed by a device simply keeps signing the
+     * way it does today until the device catches up.
+     */
+    static boolean canSignUnified(Wallet wallet) {
+        return keystoreDecision(wallet).isOptedIn();
+    }
+
+    /**
+     * As canSignUnified, keeping the reason. A software seed signs from a key the wallet holds, so its support is
+     * not in question; a device is taken at its owner's word, since nothing it sends says which firmware it runs.
+     * SW_WATCH is neither: it produces no signature at all, so the wallet is in no position to opt in whatever it
+     * has been marked as.
+     *
+     * A PSBT carries one hash type for every signer, so opting in needs enough of them marked to meet the threshold.
+     */
+    static UnifiedSigHashDecision keystoreDecision(Wallet wallet) {
+        if(wallet == null || wallet.getKeystores().isEmpty()) {
+            return UnifiedSigHashDecision.NO_SIGNING_KEYS;
+        }
+
+        long capable = wallet.getKeystores().stream().filter(AppServices::canKeystoreSignUnified).count();
+
+        long unmarked = wallet.getKeystores().size() - capable;
+
+        //A threshold that cannot be read is taken as one, the weakest quorum a wallet could have. Guaranteed means no
+        //quorum of unmarked signers exists, so assuming a larger threshold than the wallet really has would claim that
+        //guarantee where a smaller quorum could still be formed. Erring low means only an entirely marked wallet
+        //qualifies, which is the answer that cannot be wrong.
+        Integer threshold = readThreshold(wallet);
+        int required = threshold == null ? 1 : threshold;
+
+        //One signer that can opt in is enough to opt in at all, because the hash type is opted into per signature and
+        //a transaction carrying one opted-in signature cannot be replayed whatever the rest carry. Signers that
+        //cannot are handed the base type rather than locked out.
+        if(capable > 0) {
+            //Guaranteed only where the signers that cannot opt in could not meet the threshold between them. Otherwise
+            //they could form a quorum on their own, and that transaction would carry no opted-in signature at all.
+            return unmarked < required
+                    ? UnifiedSigHashDecision.OPTED_IN : UnifiedSigHashDecision.OPTED_IN_IF_MARKED_SIGNS;
+        }
+
+        //A keystore the user can speak for has a remedy they can act on; one that neither signs here nor has a
+        //signer to declare for does not, and reporting the markable reason for it points at a control the
+        //keystore tab does not show. Every source today is one or the other, so the second branch is unreachable
+        //and testEverySourceEitherSignsHereOrCanBeMarked pins that. It is kept rather than removed because a
+        //source added later would otherwise fall into the markable reason and name a control it has no access to.
+        return wallet.getKeystores().stream()
+                .anyMatch(keystore -> !canKeystoreSignUnified(keystore) && !canBeMarked(keystore))
+                ? UnifiedSigHashDecision.NO_DEVICE_TO_MARK : UnifiedSigHashDecision.EXTERNAL_SIGNER;
+    }
+
+    /**
+     * The signers that can produce the opt-in, as a readable list, or null where naming them adds nothing.
+     *
+     * The caveat on a partial quorum says the transaction has to be signed by the marked signers without saying
+     * which, leaving the reader to go and look. Null where every signer qualifies, since there is no subset to name.
+     */
+    public static String markedSignerNames(Wallet wallet) {
+        if(wallet == null || wallet.getKeystores().isEmpty()) {
+            return null;
+        }
+
+        List<String> names = wallet.getKeystores().stream()
+                .filter(AppServices::canKeystoreSignUnified)
+                .map(Keystore::getLabel)
+                .filter(label -> label != null && !label.isBlank())
+                .toList();
+
+        return names.isEmpty() || names.size() == wallet.getKeystores().size() ? null : String.join(", ", names);
+    }
+
+    /**
+     * How many of the signatures already on this PSBT opt in, against how many there are.
+     *
+     * Two different properties hang off this, with different thresholds, and reporting one number for both hides the
+     * difference. Replay protection belongs to the whole transaction and takes one opted-in signature anywhere in it.
+     * Committing to every spent amount, which is what closes CVE-2020-14199, belongs to each signature and takes that
+     * signature opting in. A mixed witness has the first in full and the second only for the signers that opted in.
+     *
+     * Read off the signatures rather than the declared hash type, because a transaction assembled from per-device
+     * PSBTs carries signatures the declaration does not describe.
+     */
+    public static int[] signatureOptInCounts(PSBT psbt) {
+        if(psbt == null) {
+            return new int[] {0, 0};
+        }
+
+        int optedIn = 0;
+        int total = 0;
+        for(PSBTInput psbtInput : psbt.getPsbtInputs()) {
+            for(TransactionSignature signature : psbtInput.getSignatures()) {
+                total++;
+                if((signature.sighashFlags & SigHash.UNIFIED_FLAG) != 0) {
+                    optedIn++;
+                }
+            }
+        }
+
+        return new int[] {optedIn, total};
+    }
+
+    /**
+     * How many signatures in this transaction can be lifted out of it and spent on the pre-fork chain.
+     *
+     * One opted-in signature makes the whole transaction invalid under the pre-fork rules, but the legacy signatures
+     * inside it stay individually valid there. A legacy ALL or SINGLE signature commits to every input, so it is
+     * useless in any other transaction. A legacy ANYONECANPAY one commits only to its own input and to the outputs,
+     * so it can be copied into a transaction that drops the opted-in inputs and spent against a node that never
+     * adopted the fork. The transaction is protected; that input is not, and saying only "protected" would hide it.
+     */
+    public static int liftableSignatureCount(PSBT psbt) {
+        if(psbt == null) {
+            return 0;
+        }
+
+        int liftable = 0;
+        for(PSBTInput psbtInput : psbt.getPsbtInputs()) {
+            for(TransactionSignature signature : psbtInput.getSignatures()) {
+                if((signature.sighashFlags & SigHash.UNIFIED_FLAG) == 0
+                        && (signature.sighashFlags & SigHash.ANYONECANPAY.value) != 0) {
+                    liftable++;
+                }
+            }
+        }
+
+        return liftable;
+    }
+
+    /**
+     * The PSBT to hand this device: the one given, or a copy asking only for what the device can produce.
+     *
+     * The hash type is opted into per signature, so a transaction carrying one opted-in signature cannot be replayed
+     * whatever the rest carry. A PSBT declares one hash type an input, though, so a device that has not been marked
+     * cannot be handed the opted-in one. Giving it a copy asking for the base type lets it sign alongside the others
+     * rather than being locked out, and the signatures merge: combine keeps every partial signature, an opted-in type
+     * scores as the type it is built on so the severity guard does not fire, and each signature is verified against
+     * the type it carries.
+     */
+    public static PSBT psbtForDevice(Wallet wallet, PSBT psbt, String fingerprint) {
+        if(!deviceCannotSignDeclaredSigHash(wallet, psbt, fingerprint)) {
+            return psbt;
+        }
+
+        PSBT devicePsbt = psbt.copy();
+        for(PSBTInput psbtInput : devicePsbt.getPsbtInputs()) {
+            SigHash sigHash = psbtInput.getSigHash();
+            if(sigHash != null && sigHash.isUnified()) {
+                psbtInput.setSigHash(sigHash.withoutUnified());
+            }
+        }
+
+        return devicePsbt;
+    }
+
+    /**
+     * Whether handing this PSBT to the device behind the given fingerprint would ask it for a hash type it has not
+     * been marked as producing.
+     *
+     * Reachable only since the wallet began opting in on a quorum: before that it never declared the opt-in while an
+     * unmarked keystore was present, so no device could be handed a transaction it could not sign. Now a 2-of-3 with
+     * two marked signers declares it, and reaching for the third gets whatever that firmware says on refusal, which
+     * knows nothing about replay protection. Answering here lets the caller say something useful instead.
+     *
+     * Null fingerprint, absent PSBT or a keystore this device does not match all read as no objection: this exists to
+     * explain a refusal that is going to happen, not to add one.
+     */
+    public static boolean deviceCannotSignDeclaredSigHash(Wallet wallet, PSBT psbt, String fingerprint) {
+        if(wallet == null || psbt == null || fingerprint == null) {
+            return false;
+        }
+
+        boolean declaresUnified = psbt.getPsbtInputs().stream()
+                .anyMatch(psbtInput -> psbtInput.getSigHash() != null && psbtInput.getSigHash().isUnified());
+        if(!declaresUnified) {
+            return false;
+        }
+
+        return wallet.getKeystores().stream()
+                .filter(keystore -> keystore.getKeyDerivation() != null
+                        && fingerprint.equalsIgnoreCase(keystore.getKeyDerivation().getMasterFingerprint()))
+                .anyMatch(keystore -> keystore.getSource().isHardware() && !keystore.isUnifiedSigHashSupported());
+    }
+
+    /**
+     * How many signatures this wallet's policy needs, or every keystore where that cannot be determined.
+     *
+     * getNumSignaturesRequired throws on a policy it cannot parse and the policy itself may be absent on a wallet
+     * still being built, and this is called on the send path where throwing would take the screen with it. Falling
+     * back to the whole keystore set keeps the stricter answer: a threshold that cannot be read is never grounds
+     * for opting in on fewer signers than the wallet might need.
+     */
+    public static int requiredSignatures(Wallet wallet) {
+        Integer threshold = readThreshold(wallet);
+        return threshold == null ? wallet.getKeystores().size() : threshold;
+    }
+
+    /**
+     * The threshold this wallet's policy declares, or null where it cannot be read.
+     *
+     * getNumSignaturesRequired throws on a policy it cannot parse and the policy itself may be absent on a wallet
+     * still being built, and this is reached from the send path where throwing would take the screen with it.
+     */
+    public static Integer readThreshold(Wallet wallet) {
+        try {
+            Policy policy = wallet.getDefaultPolicy();
+            return policy == null ? null : policy.getNumSignaturesRequired();
+        } catch(RuntimeException e) {
+            log.debug("Could not read the signature threshold", e);
+            return null;
+        }
+    }
+
+    /**
+     * Whether this keystore signs from a key the wallet holds, rather than handing a PSBT to something else.
+     *
+     * A payment code keystore is one of these: checkKeystore refuses one without a BIP47 extended private key,
+     * and getKey returns a private key for it, so it signs in process exactly as a software seed does. It is
+     * grouped with SW_SEED on the sign button upstream for the same reason.
+     */
+    static boolean signsInProcess(Keystore keystore) {
+        KeystoreSource source = keystore.getSource();
+        return source == KeystoreSource.SW_SEED || source == KeystoreSource.SW_PAYMENT_CODE;
+    }
+
+    /**
+     * Whether the user can state what the signer behind this keystore does.
+     *
+     * The wallet is not deciding what it signs here, it is deciding which hash type to declare in a PSBT it
+     * hands to something else. A watch only keystore is in exactly the position an airgapped one is: the
+     * wallet cannot verify the claim either way, and the owner is the only one who knows. Refusing the claim
+     * for one and taking it for the other made the remedy "rebuild this wallet to change one boolean".
+     */
+    public static boolean canBeMarked(Keystore keystore) {
+        KeystoreSource source = keystore.getSource();
+        return source.isHardware() || source == KeystoreSource.SW_WATCH;
+    }
+
+    private static boolean canKeystoreSignUnified(Keystore keystore) {
+        return signsInProcess(keystore) || (canBeMarked(keystore) && keystore.isUnifiedSigHashSupported());
+    }
+
+    /**
+     * The decision for a wallet about to send, with the reason where it declined.
+     *
+     * The chain is asked before the keystores, matching the order createPSBT applied when this was a pair
+     * of booleans joined by &&: a chain that has not activated is the reason to report even where the
+     * wallet also holds a device, since the device is no obstacle until the rules are live.
+     */
+    public static UnifiedSigHashDecision getUnifiedSigHashDecision(Wallet wallet) {
+        ChainTip tip = announcedTip;
+        return combinedDecision(chainDecision(Network.get(), tip == null ? null : tip.height(), tip == null ? null : tip.header()), wallet);
+    }
+
+    /**
+     * Takes the chain's answer first and only asks the keystores if it opted in.
+     *
+     * Separate from the call above so it can be reached without the chain state, which lives in static
+     * fields that only the block events write. Left untested, this ordering is where a chain reason and a
+     * keystore reason could quietly swap places without any test noticing.
+     */
+    static UnifiedSigHashDecision combinedDecision(UnifiedSigHashDecision chainDecision, Wallet wallet) {
+        if(!chainDecision.isOptedIn()) {
+            return chainDecision;
+        }
+
+        UnifiedSigHashDecision keystores = keystoreDecision(wallet);
+        if(!keystores.isOptedIn()) {
+            return keystores;
+        }
+
+        //Both opted in, and either may qualify it. The chain's caveat is about whether the schedule this signed
+        //under is the right one, which decides whether the protection holds at all. The keystores' is about who
+        //can sign what was built. The first is worth more, so it wins where both apply, and returning the chain's
+        //answer is also what stops an uncorroborated opt-in being reported as a confirmed one.
+        return chainDecision == UnifiedSigHashDecision.OPTED_IN ? keystores : chainDecision;
+    }
+
+    /**
+     * Creates the PSBT for a transaction being sent, opting in to the unified signature hash where the
+     * chain has it and this wallet holds the keys. Every wallet send path goes through here so the
+     * decision is made in one place; the private key sweep builds its own PSBT from a key that is not in
+     * a wallet, and keeps signing the way it does today.
+     *
+     * The wallet does not offer a control for forcing this on. Every input to the decision that it can
+     * establish, it establishes more reliably than a person: whether the chain has reached the height,
+     * whether the connected node agrees with the schedule this build ships, and whether every key that
+     * will sign belongs to a signer that implements the opt-in. Opting in before the rules apply is
+     * refused by the network, checked against a node both ways. On a chain that never schedules the
+     * fork the mempool refuses it outright, "Signature opts in to the hardfork, which is not active
+     * here". On one that schedules it but has not reached the height the mempool takes it, since relay
+     * is keyed to the fork being scheduled rather than active, and no block can carry it until
+     * activation. The same spend without the opt-in is accepted and mined in both cases.
+     *
+     * That argument does not extend to forcing it off, and there is currently no way to do so. The
+     * sighash control in the transaction view offers only opted-in types once the PSBT has opted in, so
+     * changing what the signature covers keeps the opt-in rather than dropping it. Turning it off is a
+     * real want: the hash type travels in the PSBT, so a co-signer, a payjoin receiver or any other tool
+     * that does not know the byte will refuse a transaction this wallet considered safe, and a legacy
+     * signature is always valid.
+     *
+     * It is deliberately not a bare toggle. Off means the signature verifies under both rule sets, so the
+     * transaction can be replayed on the chain that did not fork, which is the protection being given up
+     * and has to be said rather than implied.
+     *
+     * Nor is the wallet always better informed. Where this build ships no height for the network the
+     * decision declines however far past activation the chain is, which is a stale table rather than a
+     * judgement, and warnActivationHeightUnknown says so to the user.
+     */
+    public static PSBT createPSBT(WalletTransaction walletTransaction) {
+        return createPSBT(walletTransaction, getUnifiedSigHashDecision(walletTransaction.getWallet()).isOptedIn());
+    }
+
+    static PSBT createPSBT(WalletTransaction walletTransaction, boolean active) {
+        return applyUnifiedSigHash(walletTransaction.createPSBT(), active);
+    }
+
+    static PSBT applyUnifiedSigHash(PSBT psbt, boolean active) {
+        if(active) {
+            for(PSBTInput psbtInput : psbt.getPsbtInputs()) {
+                SigHash sigHash = psbtInput.getSigHash();
+                psbtInput.setSigHash(sigHash == null ? SigHash.UNIFIED_ALL : sigHash.withUnified());
+            }
+        }
+
+        return psbt;
     }
 
     public static Map<Integer, BlockSummary> getBlockSummaries() {

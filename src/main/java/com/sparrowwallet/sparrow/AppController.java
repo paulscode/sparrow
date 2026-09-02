@@ -81,6 +81,9 @@ import static com.sparrowwallet.sparrow.control.DownloadVerifierDialog.*;
 public class AppController implements Initializable {
     private static final Logger log = LoggerFactory.getLogger(AppController.class);
 
+    //Must match the file configured in logback.xml, which cannot reference this constant
+    public static final String LOG_FILE_NAME = SparrowWallet.APP_ID + ".log";
+
     public static final String DRAG_OVER_CLASS = "drag-over";
     public static final int TAB_LABEL_MAX_WIDTH = 300;
     public static final double TAB_LABEL_GRAPHIC_OPACITY_INACTIVE = 0.8;
@@ -94,6 +97,9 @@ public class AppController implements Initializable {
 
     @FXML
     private MenuItem saveTransaction;
+
+    @FXML
+    private MenuItem aboutItem;
 
     @FXML
     private MenuItem showTransaction;
@@ -2925,26 +2931,41 @@ public class AppController implements Initializable {
         wait.play();
     }
 
+    /**
+     * Shows a schedule disagreement for as long as it stands, and takes the indicator down when it does not.
+     *
+     * A persistent indicator rather than a StatusEvent because this is a state, not an occurrence: every
+     * transaction is signed the legacy way while it holds, and status bar text clears itself after twenty
+     * seconds and is replaced by whatever event arrives next.
+     */
     @Subscribe
-    public void versionUpdated(VersionUpdatedEvent event) {
-        Hyperlink versionUpdateLabel = new Hyperlink("Sparrow " + event.getVersion() + " available");
-        versionUpdateLabel.getStyleClass().add("version-hyperlink");
-        versionUpdateLabel.setOnAction(event1 -> {
-            AppServices.get().getApplication().getHostServices().showDocument("https://www.sparrowwallet.com/download");
-        });
+    public void unifiedSigHashSchedule(UnifiedSigHashScheduleEvent event) {
+        //EventBus dispatches on the thread that posted, which here is whichever thread created a
+        //transaction or dropped a connection, so the scene graph work is marshalled rather than assumed
+        if(!Platform.isFxApplicationThread()) {
+            Platform.runLater(() -> unifiedSigHashSchedule(event));
+            return;
+        }
 
-        Hyperlink existingUpdateLabel = null;
+        UnifiedSigHashStatusLabel existingLabel = null;
         for(Node node : statusBar.getRightItems()) {
-            if(node instanceof Hyperlink) {
-                existingUpdateLabel = (Hyperlink)node;
+            if(node instanceof UnifiedSigHashStatusLabel) {
+                existingLabel = (UnifiedSigHashStatusLabel)node;
             }
         }
 
-        if(existingUpdateLabel != null) {
-            statusBar.getRightItems().remove(existingUpdateLabel);
+        if(!event.isDisagreement()) {
+            if(existingLabel != null) {
+                statusBar.getRightItems().remove(existingLabel);
+            }
+        } else if(existingLabel == null) {
+            //Added at the front, alongside the version update indicator. The Tor and USB indicators
+            //position themselves relative to the end of the list, so an insertion here shifts their
+            //target index and the items they sit against by the same amount and cannot displace them.
+            statusBar.getRightItems().add(0, new UnifiedSigHashStatusLabel(event));
+        } else {
+            existingLabel.update(event);
         }
-
-        statusBar.getRightItems().add(0, versionUpdateLabel);
     }
 
     @Subscribe

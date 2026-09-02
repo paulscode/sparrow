@@ -19,6 +19,7 @@ import com.sparrowwallet.sparrow.*;
 import com.sparrowwallet.sparrow.control.*;
 import com.sparrowwallet.sparrow.event.*;
 import com.sparrowwallet.sparrow.glyphfont.FontAwesome5;
+import com.sparrowwallet.sparrow.glyphfont.GlyphUtils;
 import com.sparrowwallet.sparrow.io.Config;
 import com.sparrowwallet.sparrow.io.Storage;
 import com.sparrowwallet.sparrow.net.*;
@@ -40,6 +41,7 @@ import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.fxml.Initializable;
 import javafx.scene.Node;
+import javafx.scene.Cursor;
 import javafx.scene.control.*;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
@@ -142,6 +144,9 @@ public class SendController extends WalletFormController implements Initializabl
 
     @FXML
     private Label privacyAnalysis;
+
+    @FXML
+    private Label optInStatus;
 
     @FXML
     private Button clearButton;
@@ -419,6 +424,7 @@ public class SendController extends WalletFormController implements Initializabl
             transactionDiagram.setPayjoinURI(walletTransaction == null ? null : getPayjoinURI(walletTransaction.getPayments()));
             transactionDiagram.update(walletTransaction);
             updatePrivacyAnalysis(walletTransaction);
+            updateOptInStatus(walletTransaction);
             createButton.setDisable(walletTransaction == null || isInsufficientFeeRate());
             notificationButton.setDisable(walletTransaction == null || isInsufficientFeeRate() || !AppServices.isConnected());
         });
@@ -446,6 +452,8 @@ public class SendController extends WalletFormController implements Initializabl
         });
         setPreferredOptimizationStrategy();
         updatePrivacyAnalysis(null);
+        updateOptInStatus(null);
+        optInStatus.managedProperty().bind(optInStatus.visibleProperty());
         optimizationHelp.managedProperty().bind(optimizationHelp.visibleProperty());
         privacyAnalysis.managedProperty().bind(privacyAnalysis.visibleProperty());
         optimizationHelp.visibleProperty().bind(privacyAnalysis.visibleProperty().not());
@@ -1086,6 +1094,83 @@ public class SendController extends WalletFormController implements Initializabl
         }
     }
 
+    /**
+     * Shows what this transaction's signatures will do and, where the wallet declined, why.
+     *
+     * The reason is shown here and not in the transaction view because this is where the decision is
+     * taken. Asking AppServices for it rather than working it out again means the two cannot disagree:
+     * the same call decides what createPSBT will do when this transaction is created.
+     */
+    private void updateOptInStatus(WalletTransaction walletTransaction) {
+        if(walletTransaction == null) {
+            optInStatus.setVisible(false);
+            optInStatus.setTooltip(null);
+            return;
+        }
+
+        UnifiedSigHashDecision decision = AppServices.getUnifiedSigHashDecision(walletTransaction.getWallet());
+        optInStatus.setVisible(true);
+        optInStatus.setText(decision.getSummary());
+        optInStatus.setGraphic(decision.isOptedIn() ? GlyphUtils.getSuccessGlyph() : GlyphUtils.getWarningGlyph());
+
+        //The one decision the user can act on is offered here rather than only described: the send screen is where
+        //they find out, and a setting reached by leaving the send and hunting through a tab is a setting nobody uses
+        boolean actionable = decision == UnifiedSigHashDecision.EXTERNAL_SIGNER;
+        optInStatus.getStyleClass().removeAll("actionable");
+        if(actionable) {
+            optInStatus.getStyleClass().add("actionable");
+            optInStatus.setCursor(Cursor.HAND);
+            optInStatus.setOnMouseClicked(event -> markKeystores(walletTransaction.getWallet()));
+        } else {
+            optInStatus.setCursor(Cursor.DEFAULT);
+            optInStatus.setOnMouseClicked(null);
+        }
+
+        Tooltip tooltip = new Tooltip(decision.isOptedIn()
+                ? "These signatures are not valid under the pre-fork rules, so they cannot be replayed against nodes that have not adopted the fork, and they commit to the amounts they spend."
+                    + (decision.getCaveat() == null ? "" : System.lineSeparator() + System.lineSeparator() + decision.getCaveat()
+                        + namedSigners(walletTransaction))
+                : "Signing the way it always has been, because " + decision.getReason() + "."
+                    + (decision.getRemedy() == null ? "" : System.lineSeparator() + System.lineSeparator() + decision.getRemedy()));
+        tooltip.setShowDuration(Duration.INDEFINITE);
+        optInStatus.setTooltip(tooltip);
+    }
+
+    /**
+     * The signers that can produce the opt-in, appended to a caveat that would otherwise leave the reader to go
+     * and find out which ones those are.
+     */
+    private static String namedSigners(WalletTransaction walletTransaction) {
+        String names = walletTransaction == null ? null : AppServices.markedSignerNames(walletTransaction.getWallet());
+        return names == null ? "" : " Those are: " + names + ".";
+    }
+
+    /**
+     * Marks the wallet's devices from the send screen, applying and posting exactly what the settings save does, so
+     * the change is written the same way however it was reached. The wallet is not rewritten for it, which is why
+     * this needs none of the password the settings save asks for.
+     */
+    private void markKeystores(Wallet wallet) {
+        UnifiedSigHashKeystoreDialog dialog = new UnifiedSigHashKeystoreDialog(wallet);
+        if(!dialog.hasKeystores()) {
+            return;
+        }
+
+        dialog.initOwner(optInStatus.getScene().getWindow());
+        Optional<List<Keystore>> changed = dialog.showAndWait();
+        if(changed.isEmpty() || changed.get().isEmpty()) {
+            return;
+        }
+
+        Wallet pastWallet = wallet.copy();
+        for(Keystore keystore : changed.get()) {
+            keystore.setUnifiedSigHashSupported(dialog.isMarked(keystore));
+        }
+
+        EventManager.get().post(new KeystoreUnifiedSigHashChangedEvent(wallet, pastWallet, getWalletForm().getWalletId(), changed.get()));
+        updateOptInStatus(walletTransactionProperty.get());
+    }
+
     public void clear(ActionEvent event) {
         boolean firstTab = true;
         for(Iterator<Tab> iterator = paymentTabs.getTabs().iterator(); iterator.hasNext(); ) {
@@ -1199,7 +1284,7 @@ public class SendController extends WalletFormController implements Initializabl
 
         addWalletTransactionNodes();
         walletForm.setCreatedWalletTransaction(walletTransaction);
-        PSBT psbt = walletTransaction.createPSBT();
+        PSBT psbt = AppServices.createPSBT(walletTransaction);
         BitcoinURI payjoinURI = getPayjoinURI(walletTransaction.getPayments());
         if(payjoinURI != null) {
             AppServices.addPayjoinURI(psbt, payjoinURI);
@@ -1276,7 +1361,7 @@ public class SendController extends WalletFormController implements Initializabl
             TransactionParameters params = new TransactionParameters(utxoSelectors, getTxoFilters(), walletTransaction.getPayments(), List.of(blindedPaymentCode),
                     excludedChangeNodes, feeRate, getMinimumFeeRate(), minRelayFeeRate, userFee, currentBlockHeight, groupByAddress, includeMempoolOutputs, true);
             WalletTransaction finalWalletTx = decryptedWallet.createWalletTransaction(params);
-            PSBT psbt = finalWalletTx.createPSBT();
+            PSBT psbt = AppServices.createPSBT(finalWalletTx);
             decryptedWallet.sign(psbt);
             decryptedWallet.finalise(psbt);
             Transaction transaction = psbt.extractTransaction();
@@ -1490,6 +1575,18 @@ public class SendController extends WalletFormController implements Initializabl
         }
     }
 
+    /**
+     * The status describes a decision made from the chain tip and the node's schedule, neither of which this
+     * controller owns. Rendered only when the transaction changed, it goes stale the moment either moves: a node
+     * upgraded mid-session reports a new activation height, the disagreement clears, and the screen carries on
+     * saying the two disagree while the transaction it builds is opted in. The label and the PSBT then say
+     * different things about the same send, and the label is the one that is wrong.
+     */
+    @Subscribe
+    public void unifiedSigHashSchedule(UnifiedSigHashScheduleEvent event) {
+        updateOptInStatus(walletTransactionProperty.get());
+    }
+
     @Subscribe
     public void blockSummary(BlockSummaryEvent event) {
         Platform.runLater(() -> recentBlocksView.update(AppServices.getBlockSummaries().values().stream().sorted().toList(), AppServices.getNextBlockMedianFeeRate()));
@@ -1666,6 +1763,9 @@ public class SendController extends WalletFormController implements Initializabl
         if(cpfpFeeRate.isVisible()) {
             updateTransaction();
         }
+
+        //A new tip can be the first v2 header, or can carry the chain past the activation height
+        updateOptInStatus(walletTransactionProperty.get());
     }
 
     @Subscribe

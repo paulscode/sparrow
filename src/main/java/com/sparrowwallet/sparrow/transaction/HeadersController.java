@@ -15,11 +15,13 @@ import com.sparrowwallet.hummingbird.UR;
 import com.sparrowwallet.hummingbird.registry.CryptoPSBT;
 import com.sparrowwallet.sparrow.AppServices;
 import com.sparrowwallet.sparrow.EventManager;
+import com.sparrowwallet.sparrow.UnifiedSigHashDecision;
 import com.sparrowwallet.sparrow.UnitFormat;
 import com.sparrowwallet.sparrow.control.*;
 import com.sparrowwallet.sparrow.event.*;
 import com.sparrowwallet.sparrow.glyphfont.FontAwesome5;
 import com.sparrowwallet.sparrow.glyphfont.FontAwesome5Brands;
+import com.sparrowwallet.sparrow.glyphfont.GlyphUtils;
 import com.sparrowwallet.sparrow.io.Config;
 import com.sparrowwallet.sparrow.io.Device;
 import com.sparrowwallet.sparrow.io.bbqr.BBQR;
@@ -203,6 +205,12 @@ public class HeadersController extends TransactionFormController implements Init
 
     @FXML
     private Hyperlink noWalletsWarningLink;
+
+    @FXML
+    private Label signingWalletOptIn;
+
+    @FXML
+    private Label signaturesOptIn;
 
     @FXML
     private Form sigHashForm;
@@ -532,7 +540,11 @@ public class HeadersController extends TransactionFormController implements Init
             boolean taprootInput = psbt.getPsbtInputs().stream().anyMatch(PSBTInput::isTaproot);
             SigHash requiredSigHash = taprootInput ? SigHash.DEFAULT : SigHash.ALL;
             SigHash psbtSigHash = silentPaymentOutput ? requiredSigHash : psbt.getPsbtInputs().stream().map(PSBTInput::getSigHash).filter(Objects::nonNull).findFirst().orElse(requiredSigHash);
-            sigHash.setItems(FXCollections.observableList(silentPaymentOutput ? List.of(requiredSigHash) : (taprootInput ? SigHash.TAPROOT_SIGNING_TYPES : SigHash.LEGACY_SIGNING_TYPES)));
+            List<SigHash> signingTypes = unifiedItemsFor(taprootInput ? SigHash.TAPROOT_SIGNING_TYPES : SigHash.LEGACY_SIGNING_TYPES, psbtSigHash);
+            SigHash recommendedSigHash = recommendedSigHashFor(requiredSigHash, psbtSigHash);
+            sigHash.setItems(FXCollections.observableList(silentPaymentOutput ? List.of(requiredSigHash) : signingTypes));
+            //Set before the listener below is attached, so a PSBT that already asks for NONE does not
+            //raise the confirmation dialog while the view is still initialising. Keep that order.
             sigHash.setValue(psbtSigHash);
             sigHash.setConverter(new StringConverter<>() {
                 @Override
@@ -541,7 +553,7 @@ public class HeadersController extends TransactionFormController implements Init
                         return "";
                     }
 
-                    boolean recommended = (taprootInput && sigHash == SigHash.DEFAULT) || (!taprootInput && sigHash == SigHash.ALL);
+                    boolean recommended = (sigHash == recommendedSigHash);
                     return sigHash.getName() + (recommended ? (silentPaymentOutput ? " (Required)" : " (Recommended)") : "");
                 }
 
@@ -550,8 +562,15 @@ public class HeadersController extends TransactionFormController implements Init
                     return null;
                 }
             });
+            //Read off the PSBT's own inputs, so a PSBT this wallet never built reports what it actually
+            //carries. The listener keeps it true when the type is changed here, since that change is
+            //written back to every input below.
+            updateOptInStatus(psbtSigHash);
+            sigHash.valueProperty().addListener((observable, oldValue, newValue) -> updateOptInStatus(newValue));
+
             sigHash.valueProperty().addListener((observable, oldValue, newValue) -> {
-                if(newValue == SigHash.NONE || newValue == SigHash.ANYONECANPAY_NONE) {
+                SigHash newBase = (newValue == null ? null : newValue.withoutUnified());
+                if(newBase == SigHash.NONE || newBase == SigHash.ANYONECANPAY_NONE) {
                     Optional<ButtonType> optType = AppServices.showWarningDialog("Confirm Sighash None",
                             "A sighash value of none means the signature does not commit to any of the outputs, and can be reused on a transaction with different outputs.\n\nAre you sure?",
                             ButtonType.NO, ButtonType.YES);
@@ -922,6 +941,91 @@ public class HeadersController extends TransactionFormController implements Init
         if(payjoinURI != null) {
             AppServices.addPayjoinURI(headersForm.getPsbt(), payjoinURI);
         }
+    }
+
+    /**
+     * The hash types the sighash control offers for a PSBT that already asks for the opted-in signature
+     * hash. Its value must be among its items: a ComboBox showing a value it does not list replaces it on
+     * the first interaction, so an unmapped list drops the opt-in with nothing to select to get it back.
+     *
+     * Mapped only when the PSBT opted in already, which keeps this a way to change what the signature
+     * covers rather than a way to opt in. Opting in where the rules do not yet apply is refused by the
+     * network outright, so offering it there would produce an unspendable transaction.
+     *
+     * DEFAULT collapses into UNIFIED_ALL rather than gaining a form of its own, since it means "append no
+     * hash type byte" and there is nothing for the opt-in bit to live in.
+     */
+    static List<SigHash> unifiedItemsFor(List<SigHash> signingTypes, SigHash psbtSigHash) {
+        return psbtSigHash.isUnified() ? signingTypes.stream().map(SigHash::withUnified).distinct().toList() : signingTypes;
+    }
+
+    /**
+     * The type marked as recommended, which has to follow the PSBT into its opted-in form. Marking the
+     * base type there would leave the mark on nothing, since the opted-in list does not contain it:
+     * UNIFIED_ALL reads back as ALL rather than DEFAULT, so a taproot PSBT would show no recommendation
+     * at all.
+     */
+    static SigHash recommendedSigHashFor(SigHash requiredSigHash, SigHash psbtSigHash) {
+        return psbtSigHash.isUnified() ? requiredSigHash.withUnified() : requiredSigHash;
+    }
+
+    /**
+     * Shows what the transaction's signatures do, and nothing about why.
+     *
+     * Deliberately without a reason. A PSBT records only the hash type its inputs carry, so the reason a
+     * particular one was not opted in is not in it to read, and a PSBT from a co-signer never had one to
+     * begin with. Recomputing this wallet's own decision here would answer a different question than the
+     * one the transaction is being asked, and would put a second copy of that decision in the view.
+     */
+    private void updateOptInStatus(SigHash psbtSigHash) {
+        //Counted off the signatures rather than taken from the declared hash type, because a transaction assembled
+        //from per-device PSBTs carries signatures the declaration does not describe
+        int[] counts = AppServices.signatureOptInCounts(headersForm.getPsbt());
+        int optedInSignatures = counts[0];
+        int signatures = counts[1];
+
+        //Before anything is signed there is nothing to count, so the declared type is what the transaction will be
+        boolean optedIn = signatures > 0 ? optedInSignatures > 0 : psbtSigHash != null && psbtSigHash.isUnified();
+        boolean everySignature = signatures > 0 && optedInSignatures == signatures;
+
+        for(Label label : List.of(signingWalletOptIn, signaturesOptIn)) {
+            label.setText(UnifiedSigHashDecision.summaryFor(optedIn));
+            label.setGraphic(optedIn ? GlyphUtils.getSuccessGlyph() : GlyphUtils.getWarningGlyph());
+            label.setTooltip(new Tooltip(optedInStatusDetail(optedIn, everySignature, optedInSignatures, signatures,
+                    AppServices.liftableSignatureCount(headersForm.getPsbt()))));
+        }
+    }
+
+    /**
+     * Replay protection and the commitment to spent amounts are two properties with two thresholds. The first belongs
+     * to the transaction and takes one opted-in signature anywhere in it. The second belongs to each signature. Saying
+     * only "protected" over a mixed witness would claim the second for signers that did not opt in.
+     */
+    private static String optedInStatusDetail(boolean optedIn, boolean everySignature, int optedInSignatures, int signatures, int liftable) {
+        if(!optedIn) {
+            return "These signatures are made the way they always have been. They carry no replay protection.";
+        }
+
+        if(everySignature || signatures == 0) {
+            return "These signatures are not valid under the pre-fork rules, so they cannot be replayed against nodes that have not adopted the fork, and they commit to the amounts they spend.";
+        }
+
+        String detail = "This transaction cannot be replayed against nodes that have not adopted the fork: one signature that opts in is enough, and "
+                + optedInSignatures + " of " + signatures + " do."
+                + System.lineSeparator() + System.lineSeparator()
+                + "The other " + (signatures - optedInSignatures) + " were made the way they always have been, so those signers were shown the amounts by this computer rather than committing to them.";
+
+        //A legacy ANYONECANPAY signature commits only to its own input and to the outputs, so unlike the other legacy
+        //types it survives being lifted into a transaction that drops the inputs which opted in. The transaction is
+        //protected either way, so this is the one case where the headline is true and still not the whole answer.
+        if(liftable > 0) {
+            detail += System.lineSeparator() + System.lineSeparator()
+                    + (liftable == 1 ? "One of those signs Anyone Can Pay, so it commits only to its own input and to the outputs. That input alone can be lifted into another transaction and spent on the chain that kept SHA256d, paying these same outputs."
+                                     : liftable + " of those sign Anyone Can Pay, so each commits only to its own input and to the outputs. Those inputs can be lifted into another transaction and spent on the chain that kept SHA256d, paying these same outputs.")
+                    + " Have those signers opt in too, or sign the whole transaction with All, to close that.";
+        }
+
+        return detail;
     }
 
     private static class BlockHeightContextMenu extends ContextMenu {
