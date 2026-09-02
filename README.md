@@ -119,6 +119,12 @@ Fingerprint: D4D0D3202FC06849A257B38DE94618334C674B40
 
 ## Credit
 
+The unified opt-in signature hash, and the replay protection it gives, were ported from
+[Shrike](https://github.com/privkeyio/shrike) and [its drongo](https://github.com/privkeyio/drongo)
+under the Apache 2 licence, with thanks. The consensus rule they implement is Bitcoin Knots
+[PR #357](https://github.com/bitcoinknots/bitcoin/pull/357), by the same author.
+
+
 ![Yourkit](https://www.yourkit.com/images/yklogo.png)
 
 Sparrow Wallet uses the [Yourkit Java Profiler](https://www.yourkit.com/java/profiler/) to profile and improve performance. 
