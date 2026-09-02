@@ -815,10 +815,11 @@ public class AppServices {
     /**
      * The activation height per network, or null where the fork is not scheduled.
      *
-     * A height is the part of this decision a server cannot influence, which is why it comes first. On
-     * mainnet the fork has no schedule, so nothing a server says can make a wallet opt in; without that
-     * floor a hostile or intercepted server could serve a forged v2 header today and every transaction
-     * the wallet produced would be rejected by the network as an undefined hash type.
+     * A height is the part of this decision a server cannot influence, which is why it comes first.
+     * Mainnet ships one, so a server cannot move where the wallet believes the fork begins: without that
+     * floor a hostile or intercepted server could serve a forged v2 header and every transaction the
+     * wallet produced would be rejected as an undefined hash type. A network this build ships no height
+     * for answers null and never opts in, which is the same floor reached from the other side.
      *
      * Regtest chooses its own height through -testactivationheight, so there is nothing to hardcode and
      * the chain is the only available answer there.
@@ -828,7 +829,12 @@ public class AppServices {
         //ideas of when the fork activates. The schedule has moved more than once before a final release, and each
         //move replaced the chain that followed the old one, so it is not trusted on its own: isUnifiedSigHashActive
         //cross-checks it against the connected node and declines rather than follow either side of a disagreement.
-        return Blake2bDeployment.activationHeight(network);
+        //Blake2bDeployment answers with Integer.MAX_VALUE for a network it has no schedule for, where this
+        //method's contract is null. Passing the sentinel through would read as a real height that no chain
+        //ever reaches: regtest, which picks its own height and is meant to take the BUILD_HAS_NO_SCHEDULE
+        //path, would instead be told this build and the node disagree about a height of 2147483647.
+        int height = Blake2bDeployment.activationHeight(network);
+        return height == Integer.MAX_VALUE ? null : height;
     }
 
     /**
