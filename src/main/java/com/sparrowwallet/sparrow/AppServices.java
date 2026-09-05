@@ -808,7 +808,7 @@ public class AppServices {
     public static boolean isUnifiedSigHashActive() {
         //Read once: ChainTip carries the height and the header together so the decision cannot take the
         //height of one block with the header of another, which two separate reads would allow.
-        ChainTip tip = announcedTip;
+        ChainTip tip = decisionTip();
         return isUnifiedSigHashActive(Network.get(), tip == null ? null : tip.height(), tip == null ? null : tip.header());
     }
 
@@ -1258,6 +1258,37 @@ public class AppServices {
     }
 
     /**
+     * The tip the opt-in decision is taken from.
+     *
+     * The announced tip is what a server says, and nothing authenticates it: a forged v2 header at or past the
+     * activation height would otherwise bring the opt-in forward, and every transaction signed under it would fail
+     * to verify. The header store is re-verified from a pinned anchor, so where it has reached the announcement its
+     * answer cannot be forged and is used instead.
+     *
+     * Where the store is behind, which is every session until it catches up, the announcement is used as before:
+     * declining there would sign the legacy way, and a signature carrying no replay protection is the worse of the
+     * two failures. So this is never less protective than before, at any point in the sync.
+     *
+     * Ported from privkeyio/shrike.
+     */
+    private static ChainTip decisionTip() {
+        //Read once each: the store can advance between the two reads, and taking the rule below on a verified tip
+        //that no longer matches the announcement it was compared against is the split read ChainTip exists to prevent.
+        return decisionTip(announcedTip, ElectrumServer.getVerifiedTip());
+    }
+
+    /**
+     * The rule itself, taking both tips so it can be exercised without a loaded store.
+     */
+    static ChainTip decisionTip(ChainTip announced, ChainTip verified) {
+        if(announced == null) {
+            return null;
+        }
+
+        return verified != null && verified.height() >= announced.height() ? verified : announced;
+    }
+
+    /**
      * The decision for a wallet about to send, with the reason where it declined.
      *
      * The chain is asked before the keystores, matching the order createPSBT applied when this was a pair
@@ -1265,7 +1296,7 @@ public class AppServices {
      * wallet also holds a device, since the device is no obstacle until the rules are live.
      */
     public static UnifiedSigHashDecision getUnifiedSigHashDecision(Wallet wallet) {
-        ChainTip tip = announcedTip;
+        ChainTip tip = decisionTip();
         return combinedDecision(chainDecision(Network.get(), tip == null ? null : tip.height(), tip == null ? null : tip.header()), wallet);
     }
 
