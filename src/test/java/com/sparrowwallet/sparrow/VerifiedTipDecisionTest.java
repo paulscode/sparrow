@@ -109,6 +109,35 @@ public class VerifiedTipDecisionTest {
     }
 
     /**
+     * The fallback half through the real entry point: reachable, does not throw when getVerifiedTip finds no store,
+     * and still answers from the announcement while the store is behind. That last part is the half worth protecting,
+     * since making it stricter would sign the legacy way for the whole of every session until the store caught up.
+     *
+     * WHAT THIS DOES NOT COVER, deliberately recorded rather than implied. It does not catch the entry points being
+     * rewired back to announcedTip: with no store loaded decisionTip returns the announcement anyway, so both spellings
+     * behave identically here. Checked by making that edit and watching this stay green. Covering it needs a loaded
+     * store whose tip reaches the announcement, and the store fixtures run on regtest, where chainDecision returns
+     * OPTED_IN before any height is compared. The preference rule itself is covered above, on decisionTip directly.
+     */
+    @Test
+    public void the_entry_point_is_wired_and_falls_back_with_no_store() {
+        Network.set(Network.TESTNET4);
+        ChainTip previous = AppServices.getAnnouncedTip();
+        try {
+            AppServices.setAnnouncedTip(v2(ACTIVATION));
+            Assertions.assertTrue(AppServices.isUnifiedSigHashActive(),
+                    "with no store loaded the announcement must still decide, or every session would sign the legacy way until it caught up");
+
+            AppServices.setAnnouncedTip(v1(ACTIVATION));
+            Assertions.assertFalse(AppServices.isUnifiedSigHashActive(),
+                    "a v1 header at the activation height means the chain has not activated");
+        } finally {
+            AppServices.setAnnouncedTip(previous);
+            Network.set(null);
+        }
+    }
+
+    /**
      * Asking what has been verified must not throw or start a load where no store is open, because it is
      * read on the signing decision's path.
      */
