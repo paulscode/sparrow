@@ -3,4 +3,4 @@
 	url = ../../paulscode/drongo.git
 [submodule "lark"]
 	path = lark
-	url = ../../sparrowwallet/lark.git
+	url = ../../paulscode/lark.git
