@@ -157,6 +157,53 @@ public class BlockHeadersResponseTest {
                 "{\"count\":1,\"hex\":\"" + HEADER_149536 + "\",\"headers\":[\"" + HEADER_149536 + "\"],\"max\":2016}"));
     }
 
+    /**
+     * A run far wider than the range asked for is refused, and refused before anything is built from it.
+     *
+     * <p>A header is 80 or 164 bytes, so {@code count} headers cannot occupy more than {@code count * 164} of them. Without that bound a
+     * server can make the client allocate an arbitrarily large array by answering a two header request with megabytes of hex. The server is
+     * the thing not being trusted here.
+     *
+     * <p>This is already refused, by {@link ElectrumServerRpc#checkBlockHeaders}, which counts the run against the reported count before the
+     * reader is reached. Nothing asserted it, which is the gap this closes: privkeyio/shrike carries the same bound inside its own reader,
+     * and comparing the two is what showed that this fork enforces it a layer earlier and had no test saying so.
+     */
+    @Test
+    public void aRunWiderThanTheRangeAskedForIsRefused() {
+        Network.set(Network.TESTNET4);
+        String oversized = HEADER_149536.repeat(64);
+
+        VerificationException e = assertThrows(VerificationException.class,
+                () -> fetch(149536, 1, "{\"count\":1,\"hex\":\"" + oversized + "\",\"max\":2016}"));
+        assertTrue(e.getMessage().contains("64 headers for a reported count of 1"),
+                "the refusal should say how far the run overshot: " + e.getMessage());
+    }
+
+    /** The same holds for the list form, so an oversized entry cannot hide inside a list of the right length. */
+    @Test
+    public void anOversizedListEntryIsRefused() {
+        Network.set(Network.TESTNET4);
+        String oversized = HEADER_149536.repeat(64);
+
+        VerificationException e = assertThrows(VerificationException.class,
+                () -> fetch(149536, 2, "{\"count\":2,\"headers\":[\"" + HEADER_149536 + "\",\"" + oversized + "\"],\"max\":2016}"));
+        assertTrue(e.getMessage().contains("does not hold a whole run of headers"),
+                "the refusal should name the malformed run: " + e.getMessage());
+    }
+
+    /** And the bound must not refuse a legitimate one: two v2 headers are 328 bytes, exactly what two headers may occupy. */
+    @Test
+    public void aRunOfTheLargestLegitimateWidthIsAccepted() {
+        Network.set(Network.MAINNET);
+        BlockHeaders chunk = fetch(149537, 2, "{\"count\":2,\"hex\":\"" + HEADER_149537 + HEADER_149537 + "\",\"max\":2016}");
+
+        assertEquals(2 * 2 * 164, chunk.hex.length(), "two v2 headers should be the widest a two header run can be");
+
+        List<BlockHeader> headers = VariableHeaders.parse(chunk, 2);
+        assertEquals(2, headers.size());
+        assertTrue(headers.getFirst().isV2() && headers.getLast().isV2(), "both should read as v2 rather than being split at a fixed stride");
+    }
+
     private static BlockHeaders fetch(int startHeight, int count, String result) {
         return new SimpleElectrumServerRpc().getBlockHeadersChunk(answering(result), startHeight, count);
     }
