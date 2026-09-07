@@ -109,16 +109,23 @@ public class WithdrawnSourceConfigTest {
     @Test
     public void aTxidLinkIsDeadWhereThereIsNoExplorerToOpen() {
         Config unset = config();
-        Assertions.assertTrue(unset.isBlockExplorerDisabled(), "nothing configured means nothing to open");
+        Assertions.assertFalse(unset.isBlockExplorerDisabled(),
+                "nothing configured means the default applies, and the default is an explorer that works");
+        Assertions.assertEquals(com.sparrowwallet.sparrow.net.BlockExplorer.MEMPOOL_GUIDE.getServer(),
+                unset.getEffectiveBlockExplorer(), "and that is where a txid would be opened");
 
         Config none = config();
         none.setBlockExplorer(new Server("http://none"));
         Assertions.assertTrue(none.isBlockExplorerDisabled(), "None means nothing to open");
 
+        //A refused explorer falls back to the default rather than to None, and must never fall through to
+        //the placeholder URL that None carries
         Config withdrawn = config();
         withdrawn.setBlockExplorer(new Server("https://mempool.space"));
-        Assertions.assertTrue(withdrawn.isBlockExplorerDisabled(),
-                "a refused explorer must disable the link rather than fall through to the placeholder URL");
+        Assertions.assertFalse(withdrawn.isBlockExplorerDisabled());
+        Assertions.assertEquals(com.sparrowwallet.sparrow.net.BlockExplorer.MEMPOOL_GUIDE.getServer(),
+                withdrawn.getEffectiveBlockExplorer(),
+                "a refused explorer is replaced by one that follows this chain, not by the other chain's");
 
         Config ours = config();
         ours.setBlockExplorer(new Server("https://explorer.example.test/tx/{0}"));
@@ -135,13 +142,13 @@ public class WithdrawnSourceConfigTest {
     @Test
     public void configuringAnExplorerFlipsTheDecisionTheMenuReads() {
         Config config = config();
-        Assertions.assertTrue(config.isBlockExplorerDisabled(), "nothing configured, so no menu entry");
-
-        config.setBlockExplorer(new Server("https://explorer.example.test:64461"));
-        Assertions.assertFalse(config.isBlockExplorerDisabled(), "configured, so the entry belongs there");
+        Assertions.assertFalse(config.isBlockExplorerDisabled(), "unset, so the default applies and the entry belongs there");
 
         config.setBlockExplorer(new Server("http://none"));
-        Assertions.assertTrue(config.isBlockExplorerDisabled(), "and back again when set to None");
+        Assertions.assertTrue(config.isBlockExplorerDisabled(), "None is the one setting that removes the entry");
+
+        config.setBlockExplorer(new Server("https://explorer.example.test:64461"));
+        Assertions.assertFalse(config.isBlockExplorerDisabled(), "and a custom explorer brings it back");
     }
 
     /**

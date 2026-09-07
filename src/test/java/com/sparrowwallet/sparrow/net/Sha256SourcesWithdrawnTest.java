@@ -89,8 +89,31 @@ public class Sha256SourcesWithdrawnTest {
      */
     @Test
     public void noBlockExplorerFollowsTheOtherChain() {
-        Assertions.assertEquals(List.of(BlockExplorer.NONE), Arrays.asList(BlockExplorer.values()),
-                "only None is offered; a custom URL remains available for an explorer that follows this chain");
+        Assertions.assertEquals(List.of(BlockExplorer.MEMPOOL_GUIDE, BlockExplorer.NONE), Arrays.asList(BlockExplorer.values()),
+                "only explorers that follow this chain are offered; a custom URL remains available too");
+
+        for(BlockExplorer explorer : BlockExplorer.values()) {
+            String url = explorer.getServer().getUrl().toLowerCase(java.util.Locale.ROOT);
+            Assertions.assertFalse(url.contains("mempool.space") || url.contains("blockstream.info"),
+                    explorer + " indexes the chain that kept SHA256d");
+        }
+    }
+
+    /**
+     * The offered explorer must survive the filter that refuses the withdrawn ones.
+     *
+     * <p>That filter matches on host substrings, and "mempool.guide" sits one word away from
+     * "mempool.space". Loosening it to "mempool" would silently refuse the one explorer that follows
+     * this chain, and the symptom would be a txid link that does nothing.
+     */
+    @Test
+    public void theOfferedExplorerIsNotCaughtByTheWithdrawnFilter() {
+        com.sparrowwallet.sparrow.io.Config config = new com.sparrowwallet.sparrow.io.Config();
+        config.setBlockExplorer(BlockExplorer.MEMPOOL_GUIDE.getServer());
+
+        Assertions.assertEquals(BlockExplorer.MEMPOOL_GUIDE.getServer(), config.getBlockExplorer(),
+                "the explorer that follows this chain must not be refused as one that does not");
+        Assertions.assertFalse(config.isBlockExplorerDisabled());
     }
 
     /**

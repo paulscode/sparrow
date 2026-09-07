@@ -1670,7 +1670,7 @@ public class AppServices {
             return;
         }
 
-        Server blockExplorer = Config.get().getBlockExplorer() == null ? BlockExplorer.NONE.getServer() : Config.get().getBlockExplorer();
+        Server blockExplorer = Config.get().getEffectiveBlockExplorer();
         String url = blockExplorer.getUrl();
         if(url.contains("{0}")) {
             url = url.replace("{0}", txid);

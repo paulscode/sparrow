@@ -179,8 +179,20 @@ public class Config {
      * "http://none/tx/..." in the browser.
      */
     public boolean isBlockExplorerDisabled() {
+        return BlockExplorer.NONE.getServer().equals(getEffectiveBlockExplorer());
+    }
+
+    /**
+     * The explorer a txid would actually be opened in: what is configured, or the default.
+     *
+     * <p>Named once so that whether the link is offered and where it goes cannot disagree. They did
+     * briefly: the default became an explorer that works while the decision to offer the link still
+     * read an unset value as nothing to open, which would have hidden the entry while the default sat
+     * there perfectly usable.
+     */
+    public Server getEffectiveBlockExplorer() {
         Server explorer = getBlockExplorer();
-        return explorer == null || BlockExplorer.NONE.getServer().equals(explorer);
+        return explorer == null ? BlockExplorer.MEMPOOL_GUIDE.getServer() : explorer;
     }
 
     /**
