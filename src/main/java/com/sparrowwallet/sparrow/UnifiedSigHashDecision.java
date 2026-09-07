@@ -165,4 +165,13 @@ public enum UnifiedSigHashDecision {
     public static String summaryFor(boolean optedIn) {
         return optedIn ? "Replay protected" : "Not replay protected";
     }
+
+    /**
+     * Neither of the above.
+     *
+     * <p>Both summaries are claims about what the signatures do, and a signature that could not be verified
+     * supports neither. Saying "not replay protected" over one is the same mistake as saying "protected"
+     * over it, made in the safer direction, and it is still wrong.
+     */
+    public static final String UNCHECKED_SUMMARY = "Replay protection not checked";
 }

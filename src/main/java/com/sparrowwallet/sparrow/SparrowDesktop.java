@@ -60,10 +60,15 @@ public class SparrowDesktop extends Application {
                     SettingsDialog settingsDialog = new SettingsDialog(SettingsGroup.SERVER, true);
                     Optional<Boolean> optNewWallet = settingsDialog.showAndWait();
                     createNewWallet = optNewWallet.isPresent() && optNewWallet.get();
-                } else if(Network.get() == Network.MAINNET) {
-                    Config.get().setServerType(ServerType.PUBLIC_ELECTRUM_SERVER);
+                } else if(Network.get() == Network.MAINNET && PublicElectrumServer.supportedNetwork()) {
+                    //Guarded, because the list is empty on this chain: no public server indexes it. Without
+                    //the guard nextInt(0) throws and takes first run with it, and picking one anyway would
+                    //point a new install at another chain's history before it had opened a wallet.
                     List<PublicElectrumServer> servers = PublicElectrumServer.getServers();
-                    Config.get().setPublicElectrumServer(servers.get(new Random().nextInt(servers.size())).getServer());
+                    if(!servers.isEmpty()) {
+                        Config.get().setServerType(ServerType.PUBLIC_ELECTRUM_SERVER);
+                        Config.get().setPublicElectrumServer(servers.get(new Random().nextInt(servers.size())).getServer());
+                    }
                 }
             }
         }

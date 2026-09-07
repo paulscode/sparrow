@@ -2,6 +2,7 @@ package com.sparrowwallet.sparrow.io;
 
 import com.google.gson.*;
 import com.sparrowwallet.drongo.BitcoinUnit;
+import com.sparrowwallet.drongo.Network;
 import com.sparrowwallet.drongo.protocol.Transaction;
 import com.sparrowwallet.sparrow.UnitFormat;
 import com.sparrowwallet.sparrow.Mode;
@@ -172,8 +173,52 @@ public class Config {
         return BlockExplorer.NONE.getServer().equals(blockExplorer);
     }
 
+    /**
+     * The configured block explorer, unless it follows the chain that kept SHA256d.
+     *
+     * <p>Withdrawing those explorers from the picker does nothing for an install that already chose one:
+     * the value is a URL rather than an enum, so it survives, is added back to the list because it is
+     * not among the offered ones, and keeps being opened. A txid from this chain is either absent there
+     * or present because the transaction was replayed, and the second reads as a confirmation on this
+     * chain.
+     *
+     * <p>Filtered on read rather than migrated on load, so it also covers a config edited by hand or
+     * carried over from an install of upstream Sparrow.
+     */
     public Server getBlockExplorer() {
+        if(blockExplorer != null && followsOtherChain(blockExplorer.getUrl())) {
+            return null;
+        }
+
         return blockExplorer;
+    }
+
+    /**
+     * Hosts withdrawn because they index the chain that kept SHA256d. Matched on host rather than on the
+     * whole URL, since a stored value may carry a {0} txid placeholder or a path.
+     */
+    private static boolean followsOtherChain(String url) {
+        if(url == null) {
+            return false;
+        }
+
+        String lower = url.toLowerCase(java.util.Locale.ROOT);
+        //The onion addresses too. They are the same services, they are what a Tor user would have been
+        //given, and matching only the clearnet names would let exactly the privacy-minded configuration
+        //through. Taken from the broadcast sources, which carried both forms of each.
+        for(String host : List.of(
+                "mempool.space",
+                "blockstream.info",
+                "mempool.emzy.de",
+                "mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion",
+                "explorerzydxu5ecjrkwceayqybizmpjjznk5izmitf2modhcusuqlid.onion",
+                "mempool4t6mypeemozyterviq3i5de4kpoua65r3qkn5i3kknu5l2cad.onion")) {
+            if(lower.contains(host)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public void setBlockExplorer(Server blockExplorer) {
@@ -181,7 +226,19 @@ public class Config {
         flush();
     }
 
+    /**
+     * The configured fee rate source, unless it is one that was withdrawn.
+     *
+     * <p>An install that chose mempool.space keeps that in its config, and the picker would show it as
+     * selected while nothing would use it, because the source no longer supports this network. Reading
+     * it as absent puts such an install on the connected server, which is what it would get anyway, and
+     * makes the screen agree with what is happening.
+     */
     public FeeRatesSource getFeeRatesSource() {
+        if(feeRatesSource != null && !feeRatesSource.supportsNetwork(Network.get())) {
+            return null;
+        }
+
         return feeRatesSource;
     }
 
@@ -562,7 +619,25 @@ public class Config {
         return getServer().isOnionAddress();
     }
 
+    /**
+     * The configured public Electrum server, of which there are none on this chain.
+     *
+     * <p>An install that was connected to one keeps it in its config, and {@link #getServer()} hands it
+     * straight back, so it would go on connecting to a server that indexes the chain that kept SHA256d.
+     * That does not fail visibly: it syncs, and then shows that chain's blocks, history and balances
+     * against addresses this wallet derives. The settings screen substitutes Bitcoin Core for the server
+     * type, but only once that screen is opened, which is after the connection has been made.
+     *
+     * <p>Refused here rather than by rewriting the server type, because the type is read by things that
+     * have nothing to do with connecting, such as whether transaction proofs are verified and how long
+     * to wait before retrying. Nothing to connect to is the whole of what is wanted, and it leaves an
+     * install on nothing rather than on the wrong chain.
+     */
     public Server getPublicElectrumServer() {
+        if(!PublicElectrumServer.supportedNetwork()) {
+            return null;
+        }
+
         return publicElectrumServer;
     }
 

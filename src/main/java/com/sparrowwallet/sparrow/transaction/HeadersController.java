@@ -1051,20 +1051,46 @@ public class HeadersController extends TransactionFormController implements Init
         //The signing wallet where there is one, the viewing wallet otherwise. Without either, nothing can
         //be verified and the count reports no opt-ins rather than guessing from the witness.
         Wallet vouchingWallet = headersForm.getSigningWallet() != null ? headersForm.getSigningWallet() : headersForm.getWallet();
-        int[] counts = AppServices.signatureOptInCounts(headersForm.getPsbt(), vouchingWallet);
-        int optedInSignatures = counts[0];
-        int signatures = counts[1];
+        AppServices.OptInCounts counts = AppServices.signatureOptInCounts(headersForm.getPsbt(), vouchingWallet);
+        int optedInSignatures = counts.optedIn();
+        int signatures = counts.total();
 
-        //Before anything is signed there is nothing to count, so the declared type is what the transaction will be
-        boolean optedIn = signatures > 0 ? optedInSignatures > 0 : psbtSigHash != null && psbtSigHash.isUnified();
-        boolean everySignature = signatures > 0 && optedInSignatures == signatures;
+        //Three states, not two. Protection can be shown, its absence can be shown, and neither can be shown
+        //for a signature this wallet cannot check: without a wallet to derive keys from, for an input it does
+        //not own, or for a spend whose signature commits to a script key rather than the output key. Saying
+        //"not replay protected" there would be as much a claim about unchecked bytes as saying "protected"
+        //was, and it is the claim that would send someone off to re-sign a transaction that was already fine.
+        //
+        //Before anything is signed there is nothing to count, so the declared type is what the transaction
+        //will be. That is a statement about intent and is labelled as one.
+        boolean optedIn = signatures > 0 ? counts.isProtected() : psbtSigHash != null && psbtSigHash.isUnified();
+        boolean uncertain = counts.isUncertain();
+        boolean everySignature = signatures > 0 && optedInSignatures == counts.verified() && counts.verified() == signatures;
 
         for(Label label : List.of(signingWalletOptIn, signaturesOptIn)) {
-            label.setText(UnifiedSigHashDecision.summaryFor(optedIn));
-            label.setGraphic(optedIn ? GlyphUtils.getSuccessGlyph() : GlyphUtils.getWarningGlyph());
-            label.setTooltip(new Tooltip(optedInStatusDetail(optedIn, everySignature, optedInSignatures, signatures,
-                    AppServices.liftableSignatureCount(headersForm.getPsbt(), vouchingWallet))));
+            label.setText(uncertain ? UnifiedSigHashDecision.UNCHECKED_SUMMARY : UnifiedSigHashDecision.summaryFor(optedIn));
+            label.setGraphic(optedIn && !uncertain ? GlyphUtils.getSuccessGlyph() : GlyphUtils.getWarningGlyph());
+            label.setTooltip(new Tooltip(uncertain
+                    ? uncheckedStatusDetail(counts)
+                    : optedInStatusDetail(optedIn, everySignature, counts)));
         }
+    }
+
+    /**
+     * What to say when the signatures could not be checked.
+     *
+     * <p>An opt-in is only counted where a signature verifies against a key this wallet derives, because a
+     * hash type read off an unverified push is not evidence of anything. When nothing could be verified the
+     * honest answer is that nothing is known, and it is worth saying why, since the usual reason is simply
+     * that the transaction is being read without the wallet that owns it.
+     */
+    private static String uncheckedStatusDetail(AppServices.OptInCounts counts) {
+        String detail = counts.verified() == 0
+                ? "None of the " + counts.total() + (counts.total() == 1 ? " signature" : " signatures") + " here could be checked against a key this wallet derives, so whether they carry replay protection is not known."
+                : counts.verified() + " of " + counts.total() + " signatures could be checked, and none of those opted in. The rest could not be checked, so this transaction cannot be called unprotected either.";
+
+        return detail + System.lineSeparator() + System.lineSeparator()
+                + "This usually means the transaction is open without the wallet that owns its inputs, or that its inputs belong to someone else. Open it from that wallet to get an answer.";
     }
 
     /**
@@ -1072,7 +1098,10 @@ public class HeadersController extends TransactionFormController implements Init
      * to the transaction and takes one opted-in signature anywhere in it. The second belongs to each signature. Saying
      * only "protected" over a mixed witness would claim the second for signers that did not opt in.
      */
-    private static String optedInStatusDetail(boolean optedIn, boolean everySignature, int optedInSignatures, int signatures, int liftable) {
+    private static String optedInStatusDetail(boolean optedIn, boolean everySignature, AppServices.OptInCounts counts) {
+        int optedInSignatures = counts.optedIn();
+        int signatures = counts.total();
+
         if(!optedIn) {
             return "These signatures are made the way they always have been. They carry no replay protection.";
         }
@@ -1083,12 +1112,33 @@ public class HeadersController extends TransactionFormController implements Init
 
         String detail = "This transaction cannot be replayed against nodes that have not adopted the fork: one signature that opts in is enough, and "
                 + optedInSignatures + " of " + signatures + " do."
-                + System.lineSeparator() + System.lineSeparator()
-                + "The other " + (signatures - optedInSignatures) + " were made the way they always have been, so those signers were shown the amounts by this computer rather than committing to them.";
+                + System.lineSeparator() + System.lineSeparator();
+
+        //Split three ways rather than two. A signature that did not opt in and one that could not be
+        //checked are different things, and calling the second "made the way they always have been" is a
+        //claim about bytes nobody verified, which is the mistake this whole reading exists to avoid.
+        int checkedLegacy = counts.verified() - optedInSignatures;
+        int unchecked = signatures - counts.verified();
+
+        if(checkedLegacy > 0) {
+            detail += (checkedLegacy == 1 ? "One other was" : "Another " + checkedLegacy + " were")
+                    + " made the way they always have been, so " + (checkedLegacy == 1 ? "that signer" : "those signers")
+                    + " was shown the amounts by this computer rather than committing to them.";
+        }
+
+        if(unchecked > 0) {
+            if(checkedLegacy > 0) {
+                detail += System.lineSeparator() + System.lineSeparator();
+            }
+            detail += (unchecked == 1 ? "One signature could not" : unchecked + " signatures could not")
+                    + " be checked against a key this wallet derives, so nothing is claimed about "
+                    + (unchecked == 1 ? "it" : "them") + " either way.";
+        }
 
         //A legacy ANYONECANPAY signature commits only to its own input and to the outputs, so unlike the other legacy
         //types it survives being lifted into a transaction that drops the inputs which opted in. The transaction is
         //protected either way, so this is the one case where the headline is true and still not the whole answer.
+        int liftable = counts.liftable();
         if(liftable > 0) {
             detail += System.lineSeparator() + System.lineSeparator()
                     + (liftable == 1 ? "One of those signs Anyone Can Pay, so it commits only to its own input and to the outputs. That input alone can be lifted into another transaction and spent on the chain that kept SHA256d, paying these same outputs."

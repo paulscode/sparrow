@@ -69,7 +69,6 @@ public class ElectrumServer {
 
     public static final String CORE_ELECTRUM_HOST = "127.0.0.1";
 
-    private static final int MINIMUM_BROADCASTS = 2;
 
     private static final int[] NO_LABELS = new int[0];
 

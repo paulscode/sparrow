@@ -1126,9 +1126,38 @@ public class AppServices {
      * script with the derivation fallback off, because that fallback reads candidate keys out of the
      * file. Taking either from the PSBT would be the file agreeing with itself.
      */
-    public static int[] signatureOptInCounts(PSBT psbt, Wallet wallet) {
+    /**
+     * What was found, and how much of it could be checked.
+     *
+     * @param optedIn  verified signatures carrying the opt-in
+     * @param verified signatures a key this wallet derives was shown to have made
+     * @param total    signatures present, checked or not
+     * @param liftable verified signatures that did not opt in and sign Anyone Can Pay, so each can be
+     *                 lifted into another transaction and spent on the chain that kept SHA256d
+     */
+    public record OptInCounts(int optedIn, int verified, int total, int liftable) {
+        /** One verified opt-in protects the whole transaction. */
+        public boolean isProtected() {
+            return optedIn > 0;
+        }
+
+        /**
+         * Every signature was checked and none opted in. Only here can the absence of protection be
+         * stated rather than guessed: an unchecked signature might be either.
+         */
+        public boolean isKnownUnprotected() {
+            return optedIn == 0 && total > 0 && verified == total;
+        }
+
+        /** Something is present that could not be checked, so no claim can be made about it. */
+        public boolean isUncertain() {
+            return total > 0 && verified < total && optedIn == 0;
+        }
+    }
+
+    public static OptInCounts signatureOptInCounts(PSBT psbt, Wallet wallet) {
         if(psbt == null) {
-            return new int[] {0, 0};
+            return new OptInCounts(0, 0, 0, 0);
         }
 
         Map<PSBTInput, WalletNode> signingNodes = (wallet != null && wallet.isValid())
@@ -1136,7 +1165,9 @@ public class AppServices {
                 : Collections.emptyMap();
 
         int optedIn = 0;
+        int verified = 0;
         int total = 0;
+        int liftable = 0;
         for(PSBTInput psbtInput : psbt.getPsbtInputs()) {
             total += psbtInput.getSignatures().size();
 
@@ -1147,13 +1178,18 @@ public class AppServices {
             }
 
             for(TransactionSignature signature : psbtInput.getVerifiedSignatures(derivedKeys(wallet, signingNode)).values()) {
+                verified++;
                 if((signature.sighashFlags & SigHash.UNIFIED_FLAG) != 0) {
                     optedIn++;
+                } else if((signature.sighashFlags & SigHash.ANYONECANPAY.value) != 0) {
+                    //Counted in the same pass as the rest. Read separately it meant verifying every
+                    //signature in the transaction a second time, on the thread drawing the screen.
+                    liftable++;
                 }
             }
         }
 
-        return new int[] {optedIn, total};
+        return new OptInCounts(optedIn, verified, total, liftable);
     }
 
     /**
@@ -1178,43 +1214,6 @@ public class AppServices {
         return keys;
     }
 
-    /**
-     * How many signatures in this transaction can be lifted out of it and spent on the pre-fork chain.
-     *
-     * One opted-in signature makes the whole transaction invalid under the pre-fork rules, but the legacy signatures
-     * inside it stay individually valid there. A legacy ALL or SINGLE signature commits to every input, so it is
-     * useless in any other transaction. A legacy ANYONECANPAY one commits only to its own input and to the outputs,
-     * so it can be copied into a transaction that drops the opted-in inputs and spent against a node that never
-     * adopted the fork. The transaction is protected; that input is not, and saying only "protected" would hide it.
-     */
-    public static int liftableSignatureCount(PSBT psbt, Wallet wallet) {
-        if(psbt == null) {
-            return 0;
-        }
-
-        Map<PSBTInput, WalletNode> signingNodes = (wallet != null && wallet.isValid())
-                ? wallet.getSigningNodes(psbt, false)
-                : Collections.emptyMap();
-
-        int liftable = 0;
-        for(PSBTInput psbtInput : psbt.getPsbtInputs()) {
-            WalletNode signingNode = signingNodes.get(psbtInput);
-            if(signingNode == null) {
-                continue;
-            }
-
-            //Verified for the same reason the opt-in count is: a push that merely looks like a signature
-            //would otherwise be reported as a spendable copy of one
-            for(TransactionSignature signature : psbtInput.getVerifiedSignatures(derivedKeys(wallet, signingNode)).values()) {
-                if((signature.sighashFlags & SigHash.UNIFIED_FLAG) == 0
-                        && (signature.sighashFlags & SigHash.ANYONECANPAY.value) != 0) {
-                    liftable++;
-                }
-            }
-        }
-
-        return liftable;
-    }
 
     /**
      * The PSBT to hand this device: the one given, or a copy asking only for what the device can produce.
