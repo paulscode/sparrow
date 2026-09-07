@@ -4,6 +4,7 @@ import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.gui2.*;
 import com.googlecode.lanterna.gui2.dialogs.DialogWindow;
 import com.sparrowwallet.sparrow.io.Config;
+import com.sparrowwallet.sparrow.net.PublicElectrumServer;
 import com.sparrowwallet.sparrow.net.ServerType;
 import com.sparrowwallet.sparrow.terminal.SparrowTerminal;
 
@@ -20,7 +21,12 @@ public class ServerTypeDialog extends DialogWindow {
         Panel mainPanel = new Panel();
         mainPanel.setLayoutManager(new GridLayout(2).setHorizontalSpacing(5));
 
-        ServerType[] serverTypes = new ServerType[] { ServerType.PUBLIC_ELECTRUM_SERVER, ServerType.BITCOIN_CORE, ServerType.ELECTRUM_SERVER };
+        //Public servers are withdrawn on this chain: none index it, and connecting to one syncs and then
+        //shows another chain's blocks and balances against addresses this wallet derives. Offering the
+        //option would lead to a picker with nothing in it, and the default below would have selected it.
+        ServerType[] serverTypes = PublicElectrumServer.supportedNetwork()
+                ? new ServerType[] { ServerType.PUBLIC_ELECTRUM_SERVER, ServerType.BITCOIN_CORE, ServerType.ELECTRUM_SERVER }
+                : new ServerType[] { ServerType.BITCOIN_CORE, ServerType.ELECTRUM_SERVER };
 
         mainPanel.addComponent(new Label("Connect using"));
         type = new RadioBoxList<>();
@@ -28,8 +34,11 @@ public class ServerTypeDialog extends DialogWindow {
             type.addItem(serverType.getName());
         }
 
-        if(Config.get().getServerType() == null) {
-            Config.get().setServerType(ServerType.PUBLIC_ELECTRUM_SERVER);
+        //Never a type that is not on offer. Defaulting an unconfigured install to the public option put
+        //it on a server type that cannot connect at all, quietly, and left the radio list with nothing
+        //checked because that name is no longer in it.
+        if(Config.get().getServerType() == null || !List.of(serverTypes).contains(Config.get().getServerType())) {
+            Config.get().setServerType(serverTypes[0]);
         }
         type.setCheckedItem(Config.get().getServerType().getName());
         type.addListener((selectedIndex, previousSelection) -> {

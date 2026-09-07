@@ -17,10 +17,17 @@ public class PublicElectrumDialog extends ServerProxyDialog {
         setHints(List.of(Hint.CENTERED));
 
         Panel mainPanel = new Panel(new GridLayout(3).setHorizontalSpacing(2).setVerticalSpacing(0));
-        mainPanel.addComponent(new Label("Warning!"));
+        //No public server indexes this chain, so this screen has nothing to offer. Say that, rather than
+        //draw an empty picker: it is reachable from the proxy screen without passing the server type
+        //screen that would otherwise have moved an old config off this option.
+        boolean available = PublicElectrumServer.supportedNetwork();
+
+        mainPanel.addComponent(new Label(available ? "Warning!" : "Unavailable"));
         mainPanel.addComponent(new EmptySpace(TerminalSize.ONE));
         mainPanel.addComponent(new EmptySpace(TerminalSize.ONE));
-        mainPanel.addComponent(new Label("Using a public server means it can see your transactions"),
+        mainPanel.addComponent(new Label(available
+                        ? "Using a public server means it can see your transactions"
+                        : "No public server follows this chain. Use Bitcoin Core or a private Electrum server."),
                 GridLayout.createLayoutData(GridLayout.Alignment.BEGINNING, GridLayout.Alignment.CENTER,true,false, 3, 1));
 
         mainPanel.addComponent(new EmptySpace(TerminalSize.ONE));
@@ -32,15 +39,21 @@ public class PublicElectrumDialog extends ServerProxyDialog {
         for(PublicElectrumServer server : PublicElectrumServer.getServers()) {
             url.addItem(server);
         }
-        if(Config.get().getPublicElectrumServer() == null) {
-            AppServices.get().changePublicServer();
-        }
-        url.setSelectedItem(PublicElectrumServer.fromServer(Config.get().getPublicElectrumServer()));
-        url.addListener((selectedIndex, previousSelection, changedByUserInteraction) -> {
-            if(selectedIndex != previousSelection) {
-                Config.get().setPublicElectrumServer(PublicElectrumServer.getServers().get(selectedIndex).getServer());
+        if(available) {
+            if(Config.get().getPublicElectrumServer() == null) {
+                AppServices.get().changePublicServer();
             }
-        });
+            url.setSelectedItem(PublicElectrumServer.fromServer(Config.get().getPublicElectrumServer()));
+            url.addListener((selectedIndex, previousSelection, changedByUserInteraction) -> {
+                if(selectedIndex != previousSelection) {
+                    //Indexes the same list the combo was filled from, so it must not run against an empty one
+                    List<PublicElectrumServer> servers = PublicElectrumServer.getServers();
+                    if(selectedIndex >= 0 && selectedIndex < servers.size()) {
+                        Config.get().setPublicElectrumServer(servers.get(selectedIndex).getServer());
+                    }
+                }
+            });
+        }
         mainPanel.addComponent(url);
         mainPanel.addComponent(new EmptySpace(TerminalSize.ONE));
 

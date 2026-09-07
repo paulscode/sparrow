@@ -169,8 +169,18 @@ public class Config {
         flush();
     }
 
+    /**
+     * Whether opening a txid should do nothing.
+     *
+     * <p>Reads through {@link #getBlockExplorer()} rather than the stored field, because there are now
+     * three ways to end up with no explorer and only one of them is the None entry: nothing was ever
+     * chosen, or what was chosen follows the chain that kept SHA256d and is refused. Comparing the
+     * field caught only the third, and the caller then fell back to None's placeholder URL and opened
+     * "http://none/tx/..." in the browser.
+     */
     public boolean isBlockExplorerDisabled() {
-        return BlockExplorer.NONE.getServer().equals(blockExplorer);
+        Server explorer = getBlockExplorer();
+        return explorer == null || BlockExplorer.NONE.getServer().equals(explorer);
     }
 
     /**

@@ -49,12 +49,7 @@ public enum ExchangeSource {
             //Every fiat Coingecko lists, because the dollar price is carried into the others by the
             //conversion in usdToCurrency. Coingecko is not selectable as a source any more; it is
             //used here only to turn dollars into another currency.
-            List<Currency> converted = getCoinGeckoRates().rates.entrySet().stream()
-                    .filter(rate -> "fiat".equals(rate.getValue().type) && isValidISO4217Code(rate.getKey().toUpperCase(Locale.ROOT)))
-                    .map(rate -> Currency.getInstance(rate.getKey().toUpperCase(Locale.ROOT)))
-                    .collect(Collectors.toList());
-
-            return withUsd(converted);
+            return withUsd(fiatCurrencies(getCoinGeckoRates()));
         }
 
         @Override
@@ -96,13 +91,12 @@ public enum ExchangeSource {
 
             HttpClientService httpClientService = AppServices.getHttpClientService();
             try {
-                NeoxaTickers tickers = httpClientService.requestJson(url, NeoxaTickers.class, HTTP_HEADERS);
-                NeoxaTicker ticker = tickers.tickers.get(BTCB2_USD_PAIR);
-                if(ticker == null) {
-                    log.warn("No " + BTCB2_USD_PAIR + " market at " + url);
-                    return null;
+                Double price = btcb2Price(httpClientService.requestJson(url, NeoxaTickers.class, HTTP_HEADERS));
+                if(price == null) {
+                    log.warn("No usable " + BTCB2_USD_PAIR + " price at " + url);
                 }
-                return validPrice(ticker.last_price);
+
+                return price;
             } catch(Exception e) {
                 if(log.isDebugEnabled()) {
                     log.warn("Error retrieving currency rates", e);
@@ -111,14 +105,6 @@ public enum ExchangeSource {
                 }
                 return null;
             }
-        }
-
-        private Double getRate(CoinGeckoRates rates, String currencyCode) {
-            return rates.rates.entrySet().stream()
-                    .filter(rate -> currencyCode.equalsIgnoreCase(rate.getKey()))
-                    .map(rate -> rate.getValue().value)
-                    .filter(Objects::nonNull)
-                    .findFirst().orElse(null);
         }
 
         private CoinGeckoRates getCoinGeckoRates() {
@@ -173,6 +159,48 @@ public enum ExchangeSource {
     public abstract Double getExchangeRate(Currency currency);
 
     public abstract Map<Date, Double> getHistoricalExchangeRates(Currency currency, Date start, Date end);
+
+    /**
+     * BTCB2 in dollars, out of a parsed ticker feed, or null if the feed does not carry a usable one.
+     */
+    static Double btcb2Price(NeoxaTickers tickers) {
+        if(tickers == null) {
+            return null;
+        }
+
+        NeoxaTicker ticker = tickers.tickers.get(BTCB2_USD_PAIR);
+        return ticker == null ? null : validPrice(ticker.last_price);
+    }
+
+    /**
+     * What Coingecko says one bitcoin is worth in a currency, used only as one half of a ratio.
+     */
+    static Double getRate(CoinGeckoRates rates, String currencyCode) {
+        if(rates == null || currencyCode == null) {
+            return null;
+        }
+
+        return rates.rates.entrySet().stream()
+                .filter(rate -> rate.getValue() != null && currencyCode.equalsIgnoreCase(rate.getKey()))
+                .map(rate -> rate.getValue().value)
+                .filter(Objects::nonNull)
+                .findFirst().orElse(null);
+    }
+
+    /**
+     * The fiat currencies in a parsed rate table, which is what the picker offers alongside dollars.
+     */
+    static List<Currency> fiatCurrencies(CoinGeckoRates rates) {
+        if(rates == null) {
+            return List.of();
+        }
+
+        return rates.rates.entrySet().stream()
+                .filter(rate -> rate.getValue() != null && "fiat".equals(rate.getValue().type)
+                        && isValidISO4217Code(rate.getKey().toUpperCase(Locale.ROOT)))
+                .map(rate -> Currency.getInstance(rate.getKey().toUpperCase(Locale.ROOT)))
+                .collect(Collectors.toList());
+    }
 
     /**
      * The convertible currencies, with dollars guaranteed to be among them and first.
@@ -310,12 +338,12 @@ public enum ExchangeSource {
         }
     }
 
-    private static class CoinGeckoRates {
+    static class CoinGeckoRates {
         public Map<String, CoinGeckoRate> rates = new LinkedHashMap<>();
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    private static class CoinGeckoRate {
+    static class CoinGeckoRate {
         public String name;
         public String unit;
         public Double value;
@@ -326,7 +354,7 @@ public enum ExchangeSource {
      * The CoinMarketCap-shaped feed, which is an object keyed by pair rather than a list. Captured
      * with an any-setter for the same reason mempool.space's rates were: the keys are the data.
      */
-    private static class NeoxaTickers {
+    static class NeoxaTickers {
         public final Map<String, NeoxaTicker> tickers = new LinkedHashMap<>();
 
         @JsonAnyGetter
@@ -343,7 +371,7 @@ public enum ExchangeSource {
     //Annotated because this feed carries fields we do not read (volumes, 24h ranges) and adds more
     //over time, and an unknown key must not be able to take the fiat estimate down with it.
     @JsonIgnoreProperties(ignoreUnknown = true)
-    private static class NeoxaTicker {
+    static class NeoxaTicker {
         public Double last_price;
         public Double highest_bid;
         public Double lowest_ask;

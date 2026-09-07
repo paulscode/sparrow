@@ -98,4 +98,30 @@ public class WithdrawnSourceConfigTest {
         }
     }
 
+    /**
+     * Nothing to open must mean nothing is opened.
+     *
+     * <p>With the explorers that follow the other chain withdrawn, the default is None, and None's URL
+     * is the placeholder "http://none". Whether a txid link is dead is decided separately from which
+     * explorer is configured, and that decision used to read the stored field: it saw a value, called
+     * the link live, and the caller then built "http://none/tx/..." and handed it to the browser.
+     */
+    @Test
+    public void aTxidLinkIsDeadWhereThereIsNoExplorerToOpen() {
+        Config unset = config();
+        Assertions.assertTrue(unset.isBlockExplorerDisabled(), "nothing configured means nothing to open");
+
+        Config none = config();
+        none.setBlockExplorer(new Server("http://none"));
+        Assertions.assertTrue(none.isBlockExplorerDisabled(), "None means nothing to open");
+
+        Config withdrawn = config();
+        withdrawn.setBlockExplorer(new Server("https://mempool.space"));
+        Assertions.assertTrue(withdrawn.isBlockExplorerDisabled(),
+                "a refused explorer must disable the link rather than fall through to the placeholder URL");
+
+        Config ours = config();
+        ours.setBlockExplorer(new Server("https://explorer.example.test/tx/{0}"));
+        Assertions.assertFalse(ours.isBlockExplorerDisabled(), "an explorer that follows this chain still works");
+    }
 }
