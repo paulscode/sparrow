@@ -39,7 +39,14 @@ public class SparrowWallet {
     public static final String APP_DISPLAY_NAME = "Sparrow (BLAKE2b)";
 
     public static final String APP_VERSION = "2.5.5";
-    public static final String APP_VERSION_SUFFIX = "";
+    /**
+     * Which build of this fork it is, shown in About and by --version.
+     *
+     * <p>Empty through every release so far, so all of them reported themselves as plain 2.5.5 and
+     * there was no way to ask a user which one they were running. That matters from this release on,
+     * because what it fixes is the kind of thing you need to know somebody has.
+     */
+    public static final String APP_VERSION_SUFFIX = "-blake2b.4";
     public static final String APP_HOME_PROPERTY = ApplicationDir.getHomeProperty(APP_NAME);
     public static final String NETWORK_ENV_PROPERTY = "SPARROW_NETWORK";
     public static final String JPACKAGE_APP_PATH = "jpackage.app-path";
