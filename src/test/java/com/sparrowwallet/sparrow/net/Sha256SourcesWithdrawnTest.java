@@ -92,4 +92,49 @@ public class Sha256SourcesWithdrawnTest {
         Assertions.assertEquals(List.of(BlockExplorer.NONE), Arrays.asList(BlockExplorer.values()),
                 "only None is offered; a custom URL remains available for an explorer that follows this chain");
     }
+
+    /**
+     * A default must be something that still works.
+     *
+     * <p>Seven callers each named their own fallback for an unconfigured fee source, three of them
+     * mempool.space. Withdrawing the external sources made that silently harmful rather than untidy:
+     * the fallback reports it does not support this network, and because it is also external the
+     * branch that asks the connected server is skipped, so nothing is fetched and the estimate drops
+     * to the hardcoded table without saying so. There is one default now, and this is what it has to
+     * satisfy.
+     */
+    @Test
+    public void theFeeRatesDefaultIsOneThatStillQuotes() {
+        FeeRatesSource fallback = FeeRatesSource.getDefault();
+
+        Assertions.assertTrue(fallback.supportsNetwork(Network.get()),
+                fallback.getName() + " is the fallback and does not quote fees on this chain");
+        Assertions.assertFalse(fallback.isExternal(),
+                fallback.getName() + " is external, so the branch that asks the connected server would be skipped");
+    }
+
+    /**
+     * And nothing may go back to naming a withdrawn source as its own fallback.
+     */
+    @Test
+    public void noCallerNamesItsOwnFeeRatesFallback() throws Exception {
+        java.nio.file.Path src = java.nio.file.Path.of("src/main/java");
+        //Read relative to the working directory, so say plainly when that is not where it is expected
+        //rather than reporting a missing directory as though the code were at fault
+        Assertions.assertTrue(java.nio.file.Files.isDirectory(src),
+                "expected to run from the project directory, but " + src.toAbsolutePath() + " is not there");
+
+        List<String> offenders = new java.util.ArrayList<>();
+        try(java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.walk(src)) {
+            for(java.nio.file.Path file : files.filter(f -> f.toString().endsWith(".java")).toList()) {
+                for(String line : java.nio.file.Files.readAllLines(file)) {
+                    if(line.contains("== null ? FeeRatesSource.") && !line.contains("FeeRatesSource.getDefault()")) {
+                        offenders.add(file.getFileName() + ": " + line.trim());
+                    }
+                }
+            }
+        }
+        Assertions.assertEquals(List.of(), offenders,
+                "fallbacks belong in FeeRatesSource.getDefault(), where withdrawing a source is seen once");
+    }
 }

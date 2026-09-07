@@ -204,6 +204,20 @@ public enum FeeRatesSource {
         this.external = external;
     }
 
+    /**
+     * What to use when nothing is configured, or what was configured has been withdrawn.
+     *
+     * <p>Named once because seven callers were each choosing their own, and they had drifted: three
+     * said mempool.space and the rest said other things. Withdrawing the external sources turned that
+     * from untidy into wrong. A caller defaulting to a withdrawn source gets one that reports it does
+     * not support this network, and because that source is also external the branch which asks the
+     * connected server is skipped, so no fee rates are fetched at all and the estimate silently falls
+     * back to the hardcoded table.
+     */
+    public static FeeRatesSource getDefault() {
+        return ELECTRUM_SERVER;
+    }
+
     public abstract Map<Integer, Double> getBlockTargetFeeRates(Map<Integer, Double> defaultblockTargetFeeRates);
 
     public Double getNextBlockMedianFeeRate() throws Exception {

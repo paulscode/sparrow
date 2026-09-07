@@ -2092,7 +2092,7 @@ public class ElectrumServer {
         Map<Integer, Double> targetBlocksFeeRatesSats = getDefaultFeeEstimates(targetBlocks);
 
         FeeRatesSource feeRatesSource = Config.get().getFeeRatesSource();
-        feeRatesSource = (feeRatesSource == null ? FeeRatesSource.MEMPOOL_SPACE : feeRatesSource);
+        feeRatesSource = (feeRatesSource == null ? FeeRatesSource.getDefault() : feeRatesSource);
         if(!feeRatesSource.isExternal()) {
             targetBlocksFeeRatesSats.putAll(feeRatesSource.getBlockTargetFeeRates(targetBlocksFeeRatesSats));
         } else if(useCached) {
@@ -2108,7 +2108,7 @@ public class ElectrumServer {
 
     public Double getNextBlockMedianFeeRate() {
         FeeRatesSource feeRatesSource = Config.get().getFeeRatesSource();
-        feeRatesSource = (feeRatesSource == null ? FeeRatesSource.MEMPOOL_SPACE : feeRatesSource);
+        feeRatesSource = (feeRatesSource == null ? FeeRatesSource.getDefault() : feeRatesSource);
         if(feeRatesSource.supportsNetwork(Network.get())) {
             try {
                 return feeRatesSource.getNextBlockMedianFeeRate();
@@ -2188,7 +2188,7 @@ public class ElectrumServer {
         }
 
         FeeRatesSource feeRatesSource = Config.get().getFeeRatesSource();
-        feeRatesSource = (feeRatesSource == null ? FeeRatesSource.MEMPOOL_SPACE : feeRatesSource);
+        feeRatesSource = (feeRatesSource == null ? FeeRatesSource.getDefault() : feeRatesSource);
 
         if(feeRatesSource.supportsNetwork(Network.get())) {
             try {
@@ -2230,7 +2230,7 @@ public class ElectrumServer {
 
     public List<BlockTransaction> getRecentMempoolTransactions() {
         FeeRatesSource feeRatesSource = Config.get().getFeeRatesSource();
-        feeRatesSource = (feeRatesSource == null ? FeeRatesSource.MEMPOOL_SPACE : feeRatesSource);
+        feeRatesSource = (feeRatesSource == null ? FeeRatesSource.getDefault() : feeRatesSource);
 
         if(feeRatesSource.supportsNetwork(Network.get())) {
             try {
