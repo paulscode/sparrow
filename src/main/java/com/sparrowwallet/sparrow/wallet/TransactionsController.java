@@ -195,6 +195,14 @@ public class TransactionsController extends WalletFormController implements Init
         fiatMempoolBalance.refresh(event.getUnitFormat());
     }
 
+    /**
+     * Redraw the rows so each rebuilds its context menu, which is where the explorer entry is decided.
+     */
+    @Subscribe
+    public void blockExplorerChanged(BlockExplorerChangedEvent event) {
+        transactionsTable.refresh();
+    }
+
     @Subscribe
     public void hideAmountsStatusChanged(HideAmountsStatusEvent event) {
         transactionsTable.refresh();

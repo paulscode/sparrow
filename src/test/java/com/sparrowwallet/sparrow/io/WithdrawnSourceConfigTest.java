@@ -124,4 +124,62 @@ public class WithdrawnSourceConfigTest {
         ours.setBlockExplorer(new Server("https://explorer.example.test/tx/{0}"));
         Assertions.assertFalse(ours.isBlockExplorerDisabled(), "an explorer that follows this chain still works");
     }
+
+    /**
+     * Setting an explorer has to change what the UI reads, or refreshing the rows would achieve nothing.
+     *
+     * <p>The redraw itself needs a running interface to check and is not covered here. What is covered is
+     * the state it depends on: that the answer this decision is made from actually moves when the setting
+     * does.
+     */
+    @Test
+    public void configuringAnExplorerFlipsTheDecisionTheMenuReads() {
+        Config config = config();
+        Assertions.assertTrue(config.isBlockExplorerDisabled(), "nothing configured, so no menu entry");
+
+        config.setBlockExplorer(new Server("https://explorer.example.test:64461"));
+        Assertions.assertFalse(config.isBlockExplorerDisabled(), "configured, so the entry belongs there");
+
+        config.setBlockExplorer(new Server("http://none"));
+        Assertions.assertTrue(config.isBlockExplorerDisabled(), "and back again when set to None");
+    }
+
+    /**
+     * Both halves of the notification, named rather than counted.
+     *
+     * <p>Whether a row offers the explorer is decided when its cell is drawn, and switching tabs does not
+     * redraw a cell that is already valid, so the setting did nothing until the wallet was restarted.
+     *
+     * <p>Asserting only that something somewhere handles the event is not enough: two screens handle it,
+     * and a first version of this test passed with the transactions one removed. The transactions table
+     * is the screen the reported symptom was on, so it is named.
+     */
+    @Test
+    public void theBlockExplorerChangeIsAnnouncedAndTheTransactionsTableActsOnIt() throws Exception {
+        java.nio.file.Path src = java.nio.file.Path.of("src/main/java");
+        Assertions.assertTrue(java.nio.file.Files.isDirectory(src),
+                "expected to run from the project directory, but " + src.toAbsolutePath() + " is not there");
+
+        java.util.Set<String> posts = new java.util.TreeSet<>();
+        java.util.Set<String> handles = new java.util.TreeSet<>();
+        try(java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.walk(src)) {
+            for(java.nio.file.Path file : files.filter(f -> f.toString().endsWith(".java")).toList()) {
+                String body = java.nio.file.Files.readString(file);
+                String name = file.getFileName().toString();
+                if(body.contains("new BlockExplorerChangedEvent(")) {
+                    posts.add(name);
+                }
+                if(body.contains("blockExplorerChanged(BlockExplorerChangedEvent")) {
+                    handles.add(name);
+                }
+            }
+        }
+
+        Assertions.assertTrue(posts.contains("GeneralSettingsController.java"),
+                "the settings screen must announce the change, found: " + posts);
+        Assertions.assertTrue(handles.contains("TransactionsController.java"),
+                "the transactions table must redraw its rows, or the entry stays missing until restart, found: " + handles);
+        Assertions.assertTrue(handles.contains("HeadersController.java"),
+                "the transaction view must re-enable its button, found: " + handles);
+    }
 }

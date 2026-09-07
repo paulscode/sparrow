@@ -118,6 +118,7 @@ public class GeneralSettingsController extends SettingsDetailController {
                         try {
                             Server server = getBlockExplorer(optUrl.get());
                             config.setBlockExplorer(server);
+                            EventManager.get().post(new BlockExplorerChangedEvent(config.getBlockExplorer()));
                             Platform.runLater(() -> {
                                 blockExplorers.getSelectionModel().select(-1);
                                 blockExplorers.setItems(getBlockExplorerList());
@@ -132,6 +133,10 @@ public class GeneralSettingsController extends SettingsDetailController {
                     }
                 } else {
                     Config.get().setBlockExplorer(newValue);
+                    //Told rather than left to be noticed. A transaction row decides whether to offer the
+                    //explorer when its cell is drawn, and switching tabs does not redraw a valid cell, so
+                    //without this the setting appeared to do nothing until the wallet was restarted.
+                    EventManager.get().post(new BlockExplorerChangedEvent(Config.get().getBlockExplorer()));
                 }
             }
         });

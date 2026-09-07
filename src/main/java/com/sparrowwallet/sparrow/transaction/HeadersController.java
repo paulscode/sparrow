@@ -1819,6 +1819,17 @@ public class HeadersController extends TransactionFormController implements Init
         }
     }
 
+    /**
+     * The button is enabled when this view is built and not asked again, so an explorer configured while
+     * a transaction is open would have left it greyed out until the wallet was restarted.
+     */
+    @Subscribe
+    public void blockExplorerChanged(BlockExplorerChangedEvent event) {
+        if(headersForm.isTransactionFinalized()) {
+            openBlockExplorer.setDisable(Config.get().isBlockExplorerDisabled());
+        }
+    }
+
     @Subscribe
     public void unitFormatChanged(UnitFormatChangedEvent event) {
         transactionDiagram.update(transactionDiagram.getWalletTransaction());
