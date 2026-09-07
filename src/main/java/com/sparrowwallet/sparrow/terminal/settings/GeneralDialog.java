@@ -71,7 +71,7 @@ public class GeneralDialog extends DialogWindow {
         unitFormat.setSelectedIndex(Config.get().getUnitFormat() == UnitFormat.COMMA ? 1 : 0);
 
         if(Config.get().getExchangeSource() == null) {
-            Config.get().setExchangeSource(ExchangeSource.COINGECKO);
+            Config.get().setExchangeSource(ExchangeSource.NEOXA);
         }
         exchangeSource.setSelectedItem(Config.get().getExchangeSource());
 

@@ -2,28 +2,30 @@ package com.sparrowwallet.sparrow.net;
 
 import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.sparrowwallet.sparrow.AppServices;
-import com.sparrowwallet.sparrow.SparrowWallet;
 import com.sparrowwallet.sparrow.event.ExchangeRatesUpdatedEvent;
-import com.sparrowwallet.tern.http.client.HttpResponseException;
 import javafx.concurrent.ScheduledService;
 import javafx.concurrent.Service;
 import javafx.concurrent.Task;
-import org.apache.commons.lang3.time.DateUtils;
 import org.girod.javafx.svgimage.SVGImage;
 import org.girod.javafx.svgimage.SVGLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URL;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Where the fiat estimate beside a coin amount comes from.
+ *
+ * <p>Upstream Sparrow offers Coinbase, Coingecko and mempool.space, all of which price BTC on the
+ * SHA256 chain. This wallet holds BTCB2, so every one of those quotes the wrong asset: with BTC near
+ * $79,800 and BTCB2 near $700, they overstate a balance by roughly 114 times. A wrong number carries
+ * further than a missing one, so they are gone rather than merely not the default. What is left is
+ * the chain's own market, and None.
+ */
 public enum ExchangeSource {
     NONE("None", null) {
         @Override
@@ -41,26 +43,50 @@ public enum ExchangeSource {
             return Collections.emptyMap();
         }
     },
-    COINBASE("Coinbase", "No historical rates") {
+    NEOXA("Neoxa", "No historical rates") {
         @Override
         public List<Currency> getSupportedCurrencies() {
-            return getRates().data.rates.keySet().stream().filter(code -> isValidISO4217Code(code.toUpperCase(Locale.ROOT)))
-                    .map(code -> Currency.getInstance(code.toUpperCase(Locale.ROOT))).collect(Collectors.toList());
+            //Every fiat Coingecko lists, because the USD price is carried into the others by the
+            //conversion in getUsdConversion. Coingecko is not selectable as a source any more; it is
+            //used here only to turn dollars into another currency.
+            return getCoinGeckoRates().rates.entrySet().stream()
+                    .filter(rate -> "fiat".equals(rate.getValue().type) && isValidISO4217Code(rate.getKey().toUpperCase(Locale.ROOT)))
+                    .map(rate -> Currency.getInstance(rate.getKey().toUpperCase(Locale.ROOT)))
+                    .collect(Collectors.toList());
         }
 
         @Override
         public Double getExchangeRate(Currency currency) {
-            String currencyCode = currency.getCurrencyCode();
-            OptionalDouble optRate = getRates().data.rates.entrySet().stream().filter(rate -> currencyCode.equalsIgnoreCase(rate.getKey())).mapToDouble(Map.Entry::getValue).findFirst();
-            if(optRate.isPresent()) {
-                return optRate.getAsDouble();
+            Double btcb2Usd = getBtcb2Usd();
+            if(btcb2Usd == null) {
+                return null;
             }
 
-            return null;
+            if(USD.equalsIgnoreCase(currency.getCurrencyCode())) {
+                return btcb2Usd;
+            }
+
+            CoinGeckoRates rates = getCoinGeckoRates();
+            return usdToCurrency(btcb2Usd, getRate(rates, USD), getRate(rates, currency.getCurrencyCode()));
         }
 
-        private CoinbaseRates getRates() {
-            String url = "https://api.coinbase.com/v2/exchange-rates?currency=BTC";
+        /**
+         * BTCB2 in dollars, from the deepest market it has.
+         *
+         * <p>BTCB2_USDC is used rather than BTCB2_BTC multiplied by an outside BTC price, which is
+         * the obvious construction and is wrong here. The BTCB2/BTC pair is quoted against Neoxa's
+         * own BTC market, and that market is thin enough to drift: it has priced BTC around $74,100
+         * while the wider market was near $79,857, on a day's volume of 2.5 BTC. Multiplying by an
+         * outside BTC price therefore counts that gap twice and reads about 9% high ($763 against
+         * the $700 the USDC market and the USDT market both agree on).
+         *
+         * <p>USDC is treated as a dollar. That is an approximation, and this venue is loose enough
+         * that its own USDT/USDC pair does not reconcile with its two BTCB2 pairs to better than a
+         * few percent. It is well inside the error that matters for an estimate on an asset that
+         * moved 47% in a day.
+         */
+        private Double getBtcb2Usd() {
+            String url = "https://neoxa.exchange/api/v1/cmc/ticker";
 
             if(log.isInfoEnabled()) {
                 log.info("Requesting exchange rates from " + url);
@@ -68,86 +94,36 @@ public enum ExchangeSource {
 
             HttpClientService httpClientService = AppServices.getHttpClientService();
             try {
-                return httpClientService.requestJson(url, CoinbaseRates.class, null);
-            } catch (Exception e) {
+                NeoxaTickers tickers = httpClientService.requestJson(url, NeoxaTickers.class, HTTP_HEADERS);
+                NeoxaTicker ticker = tickers.tickers.get(BTCB2_USD_PAIR);
+                if(ticker == null) {
+                    log.warn("No " + BTCB2_USD_PAIR + " market at " + url);
+                    return null;
+                }
+                return validPrice(ticker.last_price);
+            } catch(Exception e) {
                 if(log.isDebugEnabled()) {
                     log.warn("Error retrieving currency rates", e);
                 } else {
                     log.warn("Error retrieving currency rates (" + e.getMessage() + ")");
                 }
-                return new CoinbaseRates();
+                return null;
             }
         }
 
-        @Override
-        public Map<Date, Double> getHistoricalExchangeRates(Currency currency, Date start, Date end) {
-            Map<Date, Double> historicalRates = new TreeMap<>();
-            DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
-
-            Instant currentInstant = start.toInstant();
-            Instant endInstant = end.toInstant();
-
-            while(currentInstant.isBefore(endInstant) || currentInstant.equals(endInstant)) {
-                Date fromDate = Date.from(currentInstant.atZone(ZoneId.systemDefault()).toInstant());
-                currentInstant = currentInstant.plus(300, ChronoUnit.DAYS);
-                Date toDate = Date.from(currentInstant.atZone(ZoneId.systemDefault()).toInstant());
-                toDate = toDate.after(end) ? end : toDate;
-
-                String startTime = dateFormat.format(fromDate);
-                String endTime = dateFormat.format(toDate);
-
-                String url = "https://api.pro.coinbase.com/products/BTC-" + currency.getCurrencyCode() + "/candles?start=" + startTime + "T12:00:00&end=" + endTime + "T12:00:00&granularity=86400";
-
-                if(log.isInfoEnabled()) {
-                    log.info("Requesting historical exchange rates from " + url);
-                }
-
-                HttpClientService httpClientService = AppServices.getHttpClientService();
-                try {
-                    Number[][] coinbaseData = httpClientService.requestJson(url, Number[][].class, HTTP_HEADERS);
-                    for(Number[] price : coinbaseData) {
-                        Date date = new Date(price[0].longValue() * 1000);
-                        historicalRates.put(DateUtils.truncate(date, Calendar.DAY_OF_MONTH), price[4].doubleValue());
-                    }
-                } catch(Exception e) {
-                    if(log.isDebugEnabled()) {
-                        log.warn("Error retrieving historical currency rates", e);
-                    } else {
-                        if(e instanceof HttpResponseException httpException && httpException.getStatusCode() == 404) {
-                            log.warn("Error retrieving historical currency rates (" + e.getMessage() + "). BTC-" + currency.getCurrencyCode() + " may not be supported by " + this);
-                        } else {
-                            log.warn("Error retrieving historical currency rates (" + e.getMessage() + ")");
-                        }
-                    }
-                }
-            }
-
-            return historicalRates;
-        }
-    },
-    COINGECKO("Coingecko", "Historical rates for the last 365 days") {
-        @Override
-        public List<Currency> getSupportedCurrencies() {
-            return getRates().rates.entrySet().stream().filter(rate -> "fiat".equals(rate.getValue().type) && isValidISO4217Code(rate.getKey().toUpperCase(Locale.ROOT)))
-                    .map(rate -> Currency.getInstance(rate.getKey().toUpperCase(Locale.ROOT))).collect(Collectors.toList());
+        private Double getRate(CoinGeckoRates rates, String currencyCode) {
+            return rates.rates.entrySet().stream()
+                    .filter(rate -> currencyCode.equalsIgnoreCase(rate.getKey()))
+                    .map(rate -> rate.getValue().value)
+                    .filter(Objects::nonNull)
+                    .findFirst().orElse(null);
         }
 
-        @Override
-        public Double getExchangeRate(Currency currency) {
-            String currencyCode = currency.getCurrencyCode();
-            OptionalDouble optRate = getRates().rates.entrySet().stream().filter(rate -> currencyCode.equalsIgnoreCase(rate.getKey())).mapToDouble(rate -> rate.getValue().value).findFirst();
-            if(optRate.isPresent()) {
-                return optRate.getAsDouble();
-            }
-
-            return null;
-        }
-
-        private CoinGeckoRates getRates() {
+        private CoinGeckoRates getCoinGeckoRates() {
             String url = "https://api.coingecko.com/api/v3/exchange_rates";
 
             if(log.isInfoEnabled()) {
-                log.info("Requesting exchange rates from " + url);
+                log.info("Requesting currency conversions from " + url);
             }
 
             HttpClientService httpClientService = AppServices.getHttpClientService();
@@ -155,9 +131,9 @@ public enum ExchangeSource {
                 return httpClientService.requestJson(url, CoinGeckoRates.class, HTTP_HEADERS);
             } catch(Exception e) {
                 if(log.isDebugEnabled()) {
-                    log.warn("Error retrieving currency rates", e);
+                    log.warn("Error retrieving currency conversions", e);
                 } else {
-                    log.warn("Error retrieving currency rates (" + e.getMessage() + ")");
+                    log.warn("Error retrieving currency conversions (" + e.getMessage() + ")");
                 }
                 return new CoinGeckoRates();
             }
@@ -165,111 +141,22 @@ public enum ExchangeSource {
 
         @Override
         public Map<Date, Double> getHistoricalExchangeRates(Currency currency, Date start, Date end) {
-            long startDate = start.getTime() / 1000;
-            long endDate = end.getTime() / 1000;
-
-            Calendar cal = Calendar.getInstance();
-            cal.add(Calendar.YEAR, -1);
-            startDate = Math.max(cal.getTimeInMillis() / 1000, startDate);
-            endDate = Math.max(cal.getTimeInMillis() / 1000, endDate);
-
-            String url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=" + currency.getCurrencyCode() + "&from=" + startDate + "&to=" + endDate;
-
-            if(log.isInfoEnabled()) {
-                log.info("Requesting historical exchange rates from " + url);
-            }
-
-            Map<Date, Double> historicalRates = new TreeMap<>();
-            HttpClientService httpClientService = AppServices.getHttpClientService();
-            try {
-                CoinGeckoHistoricalRates coinGeckoHistoricalRates = httpClientService.requestJson(url, CoinGeckoHistoricalRates.class, HTTP_HEADERS);
-                for(List<Number> historicalRate : coinGeckoHistoricalRates.prices) {
-                    Date date = new Date(historicalRate.get(0).longValue());
-                    historicalRates.put(DateUtils.truncate(date, Calendar.DAY_OF_MONTH), historicalRate.get(1).doubleValue());
-                }
-            } catch(Exception e) {
-                if(log.isDebugEnabled()) {
-                    log.warn("Error retrieving historical currency rates", e);
-                } else {
-                    log.warn("Error retrieving historical currency rates (" + e.getMessage() + ")");
-                }
-            }
-
-            return historicalRates;
-        }
-    },
-    MEMPOOL_SPACE("mempool.space", "Historical rates from Apr 2023") {
-        @Override
-        public List<Currency> getSupportedCurrencies() {
-            return getRates().rates.entrySet().stream().filter(price -> isValidISO4217Code(price.getKey().toUpperCase(Locale.ROOT)))
-                    .map(rate -> Currency.getInstance(rate.getKey().toUpperCase(Locale.ROOT))).collect(Collectors.toList());
-        }
-
-        @Override
-        public Double getExchangeRate(Currency currency) {
-            String currencyCode = currency.getCurrencyCode();
-            OptionalDouble optRate = getRates().rates.entrySet().stream().filter(price -> currencyCode.equalsIgnoreCase(price.getKey())).mapToDouble(Map.Entry::getValue).findFirst();
-            if(optRate.isPresent()) {
-                return optRate.getAsDouble();
-            }
-
-            return null;
-        }
-
-        private MempoolSpaceRates getRates() {
-            String url = AppServices.isUsingProxy() ? "http://mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion/api/v1/prices" : "https://mempool.space/api/v1/prices";
-
-            if(log.isInfoEnabled()) {
-                log.info("Requesting exchange rates from " + url);
-            }
-
-            HttpClientService httpClientService = AppServices.getHttpClientService();
-            try {
-                return httpClientService.requestJson(url, MempoolSpaceRates.class, null);
-            } catch(Exception e) {
-                if(log.isDebugEnabled()) {
-                    log.warn("Error retrieving currency rates", e);
-                } else {
-                    log.warn("Error retrieving currency rates (" + e.getMessage() + ")");
-                }
-                return new MempoolSpaceRates();
-            }
-        }
-
-        @Override
-        public Map<Date, Double> getHistoricalExchangeRates(Currency currency, Date start, Date end) {
-            String url = AppServices.isUsingProxy() ? "http://mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion/api/v1/historical-price?currency=" + currency.getCurrencyCode() :
-                    "https://mempool.space/api/v1/historical-price?currency=" + currency.getCurrencyCode();
-
-            if(log.isInfoEnabled()) {
-                log.info("Requesting historical exchange rates from " + url);
-            }
-
-            Map<Date, Double> historicalRates = new TreeMap<>();
-            HttpClientService httpClientService = AppServices.getHttpClientService();
-            try {
-                MempoolSpaceHistoricalRates mempoolSpaceHistoricalRates = httpClientService.requestJson(url, MempoolSpaceHistoricalRates.class, null);
-                Collections.reverse(mempoolSpaceHistoricalRates.prices); //Use "closing" rates
-                for(MempoolSpaceRates historicalRate : mempoolSpaceHistoricalRates.prices) {
-                    Date date = new Date(historicalRate.time * 1000);
-                    if(date.after(start) && date.before(end) && historicalRate.rates.containsKey(currency.getCurrencyCode())) {
-                        historicalRates.put(DateUtils.truncate(date, Calendar.DAY_OF_MONTH), historicalRate.rates.get(currency.getCurrencyCode()));
-                    }
-                }
-            } catch(Exception e) {
-                if(log.isDebugEnabled()) {
-                    log.warn("Error retrieving historical currency rates", e);
-                } else {
-                    log.warn("Error retrieving historical currency rates (" + e.getMessage() + ")");
-                }
-            }
-
-            return historicalRates;
+            //Neoxa serves individual trades rather than a daily series, and BTCB2 has only been
+            //listed for days, so there is no history worth charting yet.
+            return Collections.emptyMap();
         }
     };
 
     private static final Logger log = LoggerFactory.getLogger(ExchangeSource.class);
     private static final Map<String, String> HTTP_HEADERS = Map.of("User-Agent", "Mozilla/4.0 (compatible; MSIE 9.0; Windows NT 6.1)", "Accept", "*/*");
+
+    private static final String USD = "USD";
+
+    /**
+     * The market the dollar price is read from. BTCB2's deepest pair by a wide margin: around 1126
+     * BTCB2 a day against 19 on BTCB2_USDT, and quoted a tick wide at 699/700.
+     */
+    private static final String BTCB2_USD_PAIR = "BTCB2_USDC";
 
     private final String name;
     private final String description;
@@ -284,6 +171,44 @@ public enum ExchangeSource {
     public abstract Double getExchangeRate(Currency currency);
 
     public abstract Map<Date, Double> getHistoricalExchangeRates(Currency currency, Date start, Date end);
+
+    /**
+     * A traded price, or null for one that is not.
+     *
+     * <p>A pair that has never traded reports zero, and a zero shown as a price does not read as
+     * "unknown", it reads as "your coins are worth nothing". Absent is the honest rendering, and it
+     * is what every other failure here produces.
+     */
+    static Double validPrice(Double lastPrice) {
+        if(lastPrice == null || lastPrice <= 0.0d || !Double.isFinite(lastPrice)) {
+            return null;
+        }
+
+        return lastPrice;
+    }
+
+    /**
+     * A dollar price of BTCB2 restated in another currency.
+     *
+     * <p>The two arguments after the price are Coingecko's quotes for BTC in dollars and BTC in the
+     * target currency. Dividing one by the other leaves the currency conversion and cancels BTC
+     * out completely, so Coingecko's opinion of what bitcoin is worth cannot reach the result. That
+     * is the point of doing it this way: only the ratio between two of its fiat quotes is used, and
+     * a BTC price that is stale, wrong, or from a different chain entirely changes nothing.
+     *
+     * <p>Null if any input is missing or unusable, because a dollar figure wearing another
+     * currency's symbol is worse than no figure.
+     */
+    static Double usdToCurrency(Double btcb2Usd, Double btcPerUsd, Double btcPerCurrency) {
+        if(btcb2Usd == null || btcPerUsd == null || btcPerCurrency == null) {
+            return null;
+        }
+        if(btcPerUsd <= 0.0d || btcPerCurrency <= 0.0d || !Double.isFinite(btcPerUsd) || !Double.isFinite(btcPerCurrency)) {
+            return null;
+        }
+
+        return btcb2Usd * (btcPerCurrency / btcPerUsd);
+    }
 
     private static boolean isValidISO4217Code(String code) {
         try {
@@ -360,19 +285,11 @@ public enum ExchangeSource {
         }
     }
 
-    private static class CoinbaseRates {
-        public CoinbaseData data = new CoinbaseData();
-    }
-
-    private static class CoinbaseData {
-        public String currency;
-        public Map<String, Double> rates = new LinkedHashMap<>();
-    }
-
     private static class CoinGeckoRates {
         public Map<String, CoinGeckoRate> rates = new LinkedHashMap<>();
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     private static class CoinGeckoRate {
         public String name;
         public String unit;
@@ -380,27 +297,30 @@ public enum ExchangeSource {
         public String type;
     }
 
-    private static class CoinGeckoHistoricalRates {
-        public List<List<Number>> prices = new ArrayList<>();
-    }
+    /**
+     * The CoinMarketCap-shaped feed, which is an object keyed by pair rather than a list. Captured
+     * with an any-setter for the same reason mempool.space's rates were: the keys are the data.
+     */
+    private static class NeoxaTickers {
+        public final Map<String, NeoxaTicker> tickers = new LinkedHashMap<>();
 
-    private static class MempoolSpaceRates {
-        public long time;
-        public final Map<String, Double> rates = new LinkedHashMap<>();
-
-        // Capture all other fields that Jackson do not match other members
         @JsonAnyGetter
-        public Map<String, Double> getPrices() {
-            return rates;
+        public Map<String, NeoxaTicker> getTickers() {
+            return tickers;
         }
 
         @JsonAnySetter
-        public void setPrice(String name, Double value) {
-            rates.put(name, value);
+        public void setTicker(String name, NeoxaTicker value) {
+            tickers.put(name, value);
         }
     }
 
-    private static class MempoolSpaceHistoricalRates {
-        public List<MempoolSpaceRates> prices = new ArrayList<>();
+    //Annotated because this feed carries fields we do not read (volumes, 24h ranges) and adds more
+    //over time, and an unknown key must not be able to take the fiat estimate down with it.
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private static class NeoxaTicker {
+        public Double last_price;
+        public Double highest_bid;
+        public Double lowest_ask;
     }
 }

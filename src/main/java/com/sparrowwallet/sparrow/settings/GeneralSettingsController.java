@@ -140,7 +140,14 @@ public class GeneralSettingsController extends SettingsDetailController {
         if(config.getExchangeSource() != null) {
             exchangeSource.setValue(config.getExchangeSource());
         } else {
-            exchangeSource.getSelectionModel().select(2);
+            //Named rather than selected by index. This was select(2), which meant Coingecko only
+            //because of where it sat in a list of four; with the BTC sources gone that index is off
+            //the end, which selects nothing and writes a null source back to the config.
+            //
+            //A null source is also what an existing install lands on after this change, because the
+            //config still says COINGECKO and that no longer parses to anything. So this branch is
+            //the upgrade path, not just the fresh-install one.
+            exchangeSource.setValue(ExchangeSource.NEOXA);
             config.setExchangeSource(exchangeSource.getValue());
         }
 

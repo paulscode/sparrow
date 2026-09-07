@@ -101,7 +101,7 @@ public class AppServices {
     private static final int CONNECTION_DELAY_SECS = 2;
     private static final int RATES_DELAY_SECS_DEFAULT = 2;
     private static final int RATES_DELAY_SECS_WINDOWS = 5;
-    private static final ExchangeSource DEFAULT_EXCHANGE_SOURCE = ExchangeSource.COINGECKO;
+    private static final ExchangeSource DEFAULT_EXCHANGE_SOURCE = ExchangeSource.NEOXA;
     private static final Currency DEFAULT_FIAT_CURRENCY = Currency.getInstance("USD");
     private static final String TOR_DEFAULT_PROXY_CIRCUIT_ID = "default";
 

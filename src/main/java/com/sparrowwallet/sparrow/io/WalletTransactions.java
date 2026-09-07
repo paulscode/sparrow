@@ -55,7 +55,7 @@ public class WalletTransactions implements WalletExport {
 
         ExchangeSource exchangeSource = Config.get().getExchangeSource();
         if(Config.get().getExchangeSource() == null) {
-            exchangeSource = ExchangeSource.COINGECKO;
+            exchangeSource = ExchangeSource.NEOXA;
         }
 
         Currency fiatCurrency = (exchangeSource == ExchangeSource.NONE || !AppServices.onlineProperty().get() ? null : Config.get().getFiatCurrency());

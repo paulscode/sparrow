@@ -421,7 +421,7 @@ public class WalletLabels implements WalletImport, WalletExport {
     }
 
     private static ExchangeSource getExchangeSource() {
-        return Config.get().getExchangeSource() == null ? ExchangeSource.COINGECKO : Config.get().getExchangeSource();
+        return Config.get().getExchangeSource() == null ? ExchangeSource.NEOXA : Config.get().getExchangeSource();
     }
 
     private static Currency getFiatCurrency() {
