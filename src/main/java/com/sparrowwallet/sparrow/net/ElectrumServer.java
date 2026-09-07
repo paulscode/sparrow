@@ -2271,28 +2271,29 @@ public class ElectrumServer {
         }
     }
 
+    /**
+     * Always the connected server, even behind a Tor proxy.
+     *
+     * <p>Upstream sends the transaction to external broadcast sources first when a proxy is
+     * configured, so that the node cannot associate it with this IP. Every one of those sources
+     * follows the chain that kept SHA256d, and this is the path that moves value, so on this chain
+     * that trade is not one that can be made:
+     *
+     * <ul>
+     *   <li>Replay protection here is opt in, carried by the unified signature hash. A transaction
+     *       signed the ordinary way is valid on both chains, and whether a signing device can even
+     *       produce the unified form is a property of the device. So an unprotected transaction
+     *       posted to those endpoints can confirm on the other chain, spending inputs that existed
+     *       before the fork.
+     *   <li>It would not reach this chain at all. On mainnet parameters, which is what this chain
+     *       runs, the loop returned as soon as two external posts succeeded and never called the
+     *       connected server.
+     * </ul>
+     *
+     * <p>So a proxied broadcast now goes where an unproxied one goes. The privacy upstream buys
+     * here is real, and it is not worth paying for it in someone else's coins.
+     */
     public Sha256Hash broadcastTransactionPrivately(Transaction transaction) throws ServerException {
-        //If Tor proxy is configured, try all external broadcast sources in random order before falling back to connected Electrum server
-        if(AppServices.isUsingProxy()) {
-            List<BroadcastSource> broadcastSources = Arrays.stream(BroadcastSource.values()).filter(src -> src.getSupportedNetworks().contains(Network.get())).collect(Collectors.toList());
-            Sha256Hash txid = null;
-            for(int i = 1; !broadcastSources.isEmpty(); i++) {
-                BroadcastSource broadcastSource = broadcastSources.remove(new Random().nextInt(broadcastSources.size()));
-                try {
-                    txid = broadcastSource.broadcastTransaction(transaction);
-                    if(Network.get() != Network.MAINNET || i >= MINIMUM_BROADCASTS || broadcastSources.isEmpty()) {
-                        return txid;
-                    }
-                } catch(BroadcastSource.BroadcastException e) {
-                    log.error("Could not post transaction via " + broadcastSource.getName(), e);
-                }
-            }
-
-            if(txid != null) {
-                return txid;
-            }
-        }
-
         return broadcastTransaction(transaction);
     }
 

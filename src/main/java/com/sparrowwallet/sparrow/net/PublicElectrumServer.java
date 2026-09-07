@@ -34,7 +34,15 @@ public enum PublicElectrumServer {
         this.supportedPolicyTypes = supportedPolicyTypes;
     }
 
-    public static final List<Network> SUPPORTED_NETWORKS = List.of(Network.MAINNET, Network.TESTNET, Network.SIGNET, Network.TESTNET4);
+    /**
+     * No network, because no public server indexes this chain.
+     *
+     * <p>Every server listed above follows the chain that kept SHA256d. Connecting to one would not
+     * fail in any way a user could see: it would sync, and then show that chain's blocks, that
+     * chain's history and that chain's balances, against addresses this wallet derives. The entries
+     * are left in place so upstream keeps merging cleanly, and this is the gate that withdraws them.
+     */
+    public static final List<Network> SUPPORTED_NETWORKS = List.of();
 
     private final Server server;
     private final Network network;
@@ -60,7 +68,15 @@ public enum PublicElectrumServer {
         return policyTypes.stream().allMatch(this::isSupportedPolicyType);
     }
 
+    /**
+     * Empty, and honouring the same gate the settings screens divide on, so a caller that indexes
+     * into this list cannot be handed a server on the other chain.
+     */
     public static List<PublicElectrumServer> getServers() {
+        if(!supportedNetwork()) {
+            return List.of();
+        }
+
         return Arrays.stream(values()).filter(server -> server.network == Network.get()).collect(Collectors.toList());
     }
 

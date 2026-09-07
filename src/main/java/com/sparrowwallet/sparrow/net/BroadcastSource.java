@@ -26,7 +26,7 @@ public enum BroadcastSource {
 
         @Override
         public List<Network> getSupportedNetworks() {
-            return List.of(Network.MAINNET, Network.TESTNET);
+            return NO_NETWORKS;
         }
 
         protected URL getURL(HostAndPort proxy) throws MalformedURLException, URISyntaxException {
@@ -47,7 +47,7 @@ public enum BroadcastSource {
 
         @Override
         public List<Network> getSupportedNetworks() {
-            return List.of(Network.MAINNET, Network.TESTNET, Network.SIGNET, Network.TESTNET4);
+            return NO_NETWORKS;
         }
 
         protected URL getURL(HostAndPort proxy) throws MalformedURLException, URISyntaxException {
@@ -72,7 +72,7 @@ public enum BroadcastSource {
 
         @Override
         public List<Network> getSupportedNetworks() {
-            return List.of(Network.MAINNET);
+            return NO_NETWORKS;
         }
 
         protected URL getURL(HostAndPort proxy) throws MalformedURLException, URISyntaxException {
@@ -117,6 +117,19 @@ public enum BroadcastSource {
     }
 
     public abstract Sha256Hash broadcastTransaction(Transaction transaction) throws BroadcastException;
+
+    /**
+     * No network, for every source here.
+     *
+     * <p>All of them follow the chain that kept SHA256d, and posting a transaction to one relays it
+     * there. Replay protection on this chain is opt in, so an ordinary transaction is valid on both
+     * and can confirm on the other, spending inputs that predate the fork.
+     *
+     * <p>The call site that used these is gone; this is the second lock. A caller reintroduced by a
+     * merge selects from an empty list and falls through to the connected server rather than
+     * quietly resuming the old behaviour.
+     */
+    static final List<Network> NO_NETWORKS = List.of();
 
     public abstract List<Network> getSupportedNetworks();
 

@@ -10,9 +10,16 @@ import org.slf4j.LoggerFactory;
 import java.net.URL;
 import java.util.Locale;
 
+/**
+ * Where a txid is opened. Only None is offered.
+ *
+ * <p>mempool.space and blockstream.info both index the chain that kept SHA256d. A txid from this
+ * chain is either absent there, which is merely useless, or present because the transaction was
+ * replayed, which is worse: the explorer would then show a confirmation on the other chain as
+ * though it were this one's. A custom URL is still accepted for anyone running an explorer that
+ * follows this chain.
+ */
 public enum BlockExplorer {
-    MEMPOOL_SPACE("https://mempool.space"),
-    BLOCKSTREAM_INFO("https://blockstream.info"),
     NONE("http://none");
 
     private static final Logger log = LoggerFactory.getLogger(BlockExplorer.class);

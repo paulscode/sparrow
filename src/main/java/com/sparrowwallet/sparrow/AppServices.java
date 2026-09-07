@@ -101,6 +101,16 @@ public class AppServices {
     private static final int CONNECTION_DELAY_SECS = 2;
     private static final int RATES_DELAY_SECS_DEFAULT = 2;
     private static final int RATES_DELAY_SECS_WINDOWS = 5;
+    /**
+     * The update check is off, and there is nothing here it could be pointed at yet.
+     *
+     * <p>Its feed is Sparrow's, signed with Sparrow's key. Left running it can only ever announce a
+     * release of the wallet that follows the chain that kept SHA256d, and invite the user to install
+     * that over this one. Verifying the signature does not help, because the signature would be
+     * perfectly valid; it is the wrong project, not a forged message.
+     */
+    private static final boolean UPDATE_CHECK_AVAILABLE = false;
+
     private static final ExchangeSource DEFAULT_EXCHANGE_SOURCE = ExchangeSource.NEOXA;
     private static final Currency DEFAULT_FIAT_CURRENCY = Currency.getInstance("USD");
     private static final String TOR_DEFAULT_PROXY_CIRCUIT_ID = "default";
@@ -251,7 +261,7 @@ public class AppServices {
             restartService(ratesService);
         }
 
-        if(config.isCheckNewVersions() && Network.get() == Network.MAINNET && Interface.get() == Interface.DESKTOP) {
+        if(UPDATE_CHECK_AVAILABLE && config.isCheckNewVersions() && Network.get() == Network.MAINNET && Interface.get() == Interface.DESKTOP) {
             restartService(versionCheckService);
         }
 
@@ -1599,7 +1609,7 @@ public class AppServices {
             return;
         }
 
-        Server blockExplorer = Config.get().getBlockExplorer() == null ? BlockExplorer.MEMPOOL_SPACE.getServer() : Config.get().getBlockExplorer();
+        Server blockExplorer = Config.get().getBlockExplorer() == null ? BlockExplorer.NONE.getServer() : Config.get().getBlockExplorer();
         String url = blockExplorer.getUrl();
         if(url.contains("{0}")) {
             url = url.replace("{0}", txid);
@@ -1921,7 +1931,7 @@ public class AppServices {
         Config.get().addRecentServer();
 
         FeeRatesSource feeRatesSource = Config.get().getFeeRatesSource();
-        feeRatesSource = (feeRatesSource == null ? FeeRatesSource.MEMPOOL_SPACE : feeRatesSource);
+        feeRatesSource = (feeRatesSource == null ? FeeRatesSource.ELECTRUM_SERVER : feeRatesSource);
         if(feeRatesSource.supportsNetwork(Network.get()) && feeRatesSource.isExternal()) {
             fetchFeeRates();
         }
@@ -1996,7 +2006,7 @@ public class AppServices {
     public void versionCheckStatus(VersionCheckStatusEvent event) {
         versionCheckService.cancel();
 
-        if(Config.get().getMode() != Mode.OFFLINE && event.isEnabled() && Network.get() == Network.MAINNET) {
+        if(UPDATE_CHECK_AVAILABLE && Config.get().getMode() != Mode.OFFLINE && event.isEnabled() && Network.get() == Network.MAINNET) {
             versionCheckService = createVersionCheckService();
             versionCheckService.start();
         }

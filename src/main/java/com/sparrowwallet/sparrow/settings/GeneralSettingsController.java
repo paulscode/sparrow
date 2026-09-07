@@ -17,6 +17,7 @@ import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
+import javafx.scene.Node;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
@@ -83,7 +84,11 @@ public class GeneralSettingsController extends SettingsDetailController {
         if(config.getFeeRatesSource() != null) {
             feeRatesSource.setValue(config.getFeeRatesSource());
         } else {
-            feeRatesSource.getSelectionModel().select(1);
+            //Named rather than selected by index. This was select(1), which meant mempool.space only
+            //because of where it sat in the list; with the sources that follow the chain that kept
+            //SHA256d withdrawn, index 1 is the fixed one-sat minimum, so a fresh install would have
+            //quietly defaulted to underpaying every fee.
+            feeRatesSource.setValue(FeeRatesSource.ELECTRUM_SERVER);
             config.setFeeRatesSource(feeRatesSource.getValue());
         }
 
@@ -189,11 +194,20 @@ public class GeneralSettingsController extends SettingsDetailController {
             config.setNotifyNewTransactions(newValue);
         });
 
+        //Hidden rather than left looking operative. The update check is off in this build because its
+        //feed belongs to the wallet that follows the chain that kept SHA256d, so a switch offering to
+        //turn it on would be promising something that cannot happen. The row goes with it, so there is
+        //no orphaned label sitting above an empty space.
         checkNewVersions.setSelected(config.isCheckNewVersions());
         checkNewVersions.selectedProperty().addListener((observableValue, oldValue, newValue) -> {
             config.setCheckNewVersions(newValue);
             EventManager.get().post(new VersionCheckStatusEvent(newValue));
         });
+        Node updatesRow = checkNewVersions.getParent();
+        if(updatesRow != null) {
+            updatesRow.setVisible(false);
+            updatesRow.setManaged(false);
+        }
     }
 
     private static Server getBlockExplorer(String serverUrl) {

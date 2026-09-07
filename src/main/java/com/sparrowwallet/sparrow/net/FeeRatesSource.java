@@ -69,7 +69,8 @@ public enum FeeRatesSource {
 
         @Override
         public boolean supportsNetwork(Network network) {
-            return network == Network.MAINNET || network == Network.TESTNET || network == Network.TESTNET4 || network == Network.SIGNET;
+            //Follows the chain that kept SHA256d, so its fee estimates describe a different mempool. Withdrawn on every network.
+            return false;
         }
     },
     BITVIEW_SPACE("bitview.space", true) {
@@ -109,7 +110,8 @@ public enum FeeRatesSource {
 
         @Override
         public boolean supportsNetwork(Network network) {
-            return network == Network.MAINNET;
+            //Follows the chain that kept SHA256d, so its fee estimates describe a different mempool. Withdrawn on every network.
+            return false;
         }
     },
     BLOCK_XYZ("block.xyz", true) {
@@ -124,7 +126,8 @@ public enum FeeRatesSource {
 
         @Override
         public boolean supportsNetwork(Network network) {
-            return network == Network.MAINNET;
+            //Follows the chain that kept SHA256d, so its fee estimates describe a different mempool. Withdrawn on every network.
+            return false;
         }
 
         @Override
@@ -145,7 +148,8 @@ public enum FeeRatesSource {
 
         @Override
         public boolean supportsNetwork(Network network) {
-            return network == Network.MAINNET;
+            //Follows the chain that kept SHA256d, so its fee estimates describe a different mempool. Withdrawn on every network.
+            return false;
         }
     },
     MINIMUM("Minimum (1 sat/vB)", false) {
@@ -173,7 +177,8 @@ public enum FeeRatesSource {
 
         @Override
         public boolean supportsNetwork(Network network) {
-            return network == Network.MAINNET;
+            //Follows the chain that kept SHA256d, so its fee estimates describe a different mempool. Withdrawn on every network.
+            return false;
         }
 
         @Override
