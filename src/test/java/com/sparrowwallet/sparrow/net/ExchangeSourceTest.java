@@ -117,6 +117,36 @@ public class ExchangeSourceTest {
                 "a BTCB2 balance must not be valued anywhere near a BTC balance");
     }
 
+    /**
+     * Dollars survive a conversion outage.
+     *
+     * <p>BTCB2 trades in dollars, so quoting it needs only Neoxa; every other currency borrows a
+     * conversion from Coingecko. If the currency list were simply whatever Coingecko returned, a
+     * Coingecko outage would take away the one currency that was still perfectly quotable and leave
+     * the picker disabled on a wallet whose rate was fine.
+     */
+    @Test
+    public void dollarsRemainOfferedWhenTheConversionLookupFails() {
+        Assertions.assertEquals(List.of(Currency.getInstance("USD")), ExchangeSource.withUsd(Collections.emptyList()));
+    }
+
+    @Test
+    public void dollarsComeFirstBecauseThePickerFallsBackToTheHeadOfTheList() {
+        List<Currency> currencies = ExchangeSource.withUsd(
+                List.of(Currency.getInstance("EUR"), Currency.getInstance("GBP")));
+        Assertions.assertEquals(Currency.getInstance("USD"), currencies.get(0));
+        Assertions.assertEquals(3, currencies.size());
+    }
+
+    @Test
+    public void dollarsAreNotListedTwiceWhenTheConversionSourceAlsoOffersThem() {
+        List<Currency> currencies = ExchangeSource.withUsd(
+                List.of(Currency.getInstance("EUR"), Currency.getInstance("USD"), Currency.getInstance("GBP")));
+        Assertions.assertEquals(
+                List.of(Currency.getInstance("USD"), Currency.getInstance("EUR"), Currency.getInstance("GBP")),
+                currencies);
+    }
+
     @Test
     public void thereIsNoHistoryToChartYet() {
         Assertions.assertEquals(Collections.emptyMap(),

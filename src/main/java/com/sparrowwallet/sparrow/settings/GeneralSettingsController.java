@@ -231,10 +231,18 @@ public class GeneralSettingsController extends SettingsDetailController {
         fiatCurrency.getItems().addAll(currencies);
 
         Currency configCurrency = Config.get().getFiatCurrency();
-        if(configCurrency != null && currencies.contains(configCurrency)) {
+        //A configured currency that the list does not offer. There is one real source now, and it
+        //quotes dollars natively and borrows every other currency from a conversion lookup, so a
+        //short list means that lookup failed rather than that the currency was dropped. Falling back
+        //to the head of the list here would rewrite a stored preference to dollars because a request
+        //timed out, silently and permanently. Leave it alone and say the list is incomplete; the
+        //next time the dialog opens with the lookup working, the currency is theirs again.
+        boolean unavailable = configCurrency != null && !currencies.contains(configCurrency);
+
+        if(configCurrency != null && !unavailable) {
             fiatCurrency.setDisable(false);
             fiatCurrency.setValue(configCurrency);
-        } else if(!currencies.isEmpty()) {
+        } else if(configCurrency == null && !currencies.isEmpty()) {
             fiatCurrency.setDisable(false);
             fiatCurrency.getSelectionModel().select(0);
             Config.get().setFiatCurrency(fiatCurrency.getValue());
@@ -242,7 +250,7 @@ public class GeneralSettingsController extends SettingsDetailController {
             fiatCurrency.setDisable(true);
         }
 
-        currenciesLoadWarning.setVisible(exchangeSource.getValue() != ExchangeSource.NONE && currencies.isEmpty());
+        currenciesLoadWarning.setVisible(exchangeSource.getValue() != ExchangeSource.NONE && (currencies.isEmpty() || unavailable));
 
         //Always fire event regardless of previous selection to update rates
         EventManager.get().post(new FiatCurrencySelectedEvent(exchangeSource.getValue(), fiatCurrency.getValue()));

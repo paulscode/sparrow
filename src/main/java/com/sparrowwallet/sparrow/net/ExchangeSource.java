@@ -46,13 +46,15 @@ public enum ExchangeSource {
     NEOXA("Neoxa", "No historical rates") {
         @Override
         public List<Currency> getSupportedCurrencies() {
-            //Every fiat Coingecko lists, because the USD price is carried into the others by the
-            //conversion in getUsdConversion. Coingecko is not selectable as a source any more; it is
+            //Every fiat Coingecko lists, because the dollar price is carried into the others by the
+            //conversion in usdToCurrency. Coingecko is not selectable as a source any more; it is
             //used here only to turn dollars into another currency.
-            return getCoinGeckoRates().rates.entrySet().stream()
+            List<Currency> converted = getCoinGeckoRates().rates.entrySet().stream()
                     .filter(rate -> "fiat".equals(rate.getValue().type) && isValidISO4217Code(rate.getKey().toUpperCase(Locale.ROOT)))
                     .map(rate -> Currency.getInstance(rate.getKey().toUpperCase(Locale.ROOT)))
                     .collect(Collectors.toList());
+
+            return withUsd(converted);
         }
 
         @Override
@@ -171,6 +173,29 @@ public enum ExchangeSource {
     public abstract Double getExchangeRate(Currency currency);
 
     public abstract Map<Date, Double> getHistoricalExchangeRates(Currency currency, Date start, Date end);
+
+    /**
+     * The convertible currencies, with dollars guaranteed to be among them and first.
+     *
+     * <p>Dollars are the currency BTCB2 actually trades in, and quoting it needs nothing but Neoxa.
+     * Everything else is reached by borrowing a conversion from Coingecko, so a Coingecko outage
+     * empties that list. Without this, such an outage would also take away the one currency that
+     * was still working, and leave the picker disabled on a wallet whose rate was fine.
+     *
+     * <p>First, not merely present, because the picker falls back to the head of the list when it
+     * has nothing configured to select.
+     */
+    static List<Currency> withUsd(List<Currency> converted) {
+        List<Currency> currencies = new ArrayList<>();
+        currencies.add(Currency.getInstance(USD));
+        for(Currency currency : converted) {
+            if(!currencies.contains(currency)) {
+                currencies.add(currency);
+            }
+        }
+
+        return currencies;
+    }
 
     /**
      * A traded price, or null for one that is not.
