@@ -1108,16 +1108,45 @@ public class AppServices {
      * Read off the signatures rather than the declared hash type, because a transaction assembled from per-device
      * PSBTs carries signatures the declaration does not describe.
      */
-    public static int[] signatureOptInCounts(PSBT psbt) {
+    /**
+     * How many of this transaction's signatures opt in, and how many signatures there are.
+     *
+     * <p>An opt-in is counted only where a signature verifies against a key this wallet derives, for
+     * an input whose spent output matches a script this wallet derives. Reading the hash type off
+     * whatever sits in the witness is not enough to make a claim about replay protection: any 64 or
+     * 65 byte push decodes as a Schnorr signature whose hash type is its own last byte, so a taproot
+     * control block with a single merkle step, an uncompressed public key, or a stray push all read
+     * as signatures, and about half of them read as opted in. That produced the word "protected" over
+     * a transaction with no protection at all, which is the one direction this must never fail in.
+     *
+     * <p>What could not be checked stays in the total. So an unverifiable signature makes the claim
+     * read as incomplete rather than as settled, and never as protection.
+     *
+     * <p>Keys are derived here rather than read from the PSBT, and the wallet is matched by output
+     * script with the derivation fallback off, because that fallback reads candidate keys out of the
+     * file. Taking either from the PSBT would be the file agreeing with itself.
+     */
+    public static int[] signatureOptInCounts(PSBT psbt, Wallet wallet) {
         if(psbt == null) {
             return new int[] {0, 0};
         }
 
+        Map<PSBTInput, WalletNode> signingNodes = (wallet != null && wallet.isValid())
+                ? wallet.getSigningNodes(psbt, false)
+                : Collections.emptyMap();
+
         int optedIn = 0;
         int total = 0;
         for(PSBTInput psbtInput : psbt.getPsbtInputs()) {
-            for(TransactionSignature signature : psbtInput.getSignatures()) {
-                total++;
+            total += psbtInput.getSignatures().size();
+
+            WalletNode signingNode = signingNodes.get(psbtInput);
+            if(signingNode == null) {
+                //Not an input this wallet can vouch for, so nothing about it can be counted as checked
+                continue;
+            }
+
+            for(TransactionSignature signature : psbtInput.getVerifiedSignatures(derivedKeys(wallet, signingNode)).values()) {
                 if((signature.sighashFlags & SigHash.UNIFIED_FLAG) != 0) {
                     optedIn++;
                 }
@@ -1125,6 +1154,28 @@ public class AppServices {
         }
 
         return new int[] {optedIn, total};
+    }
+
+    /**
+     * The keys this wallet derives at a node, in the form a signature for it commits to.
+     *
+     * <p>The output-key transform matters for taproot, where what signs is the tweaked key rather
+     * than the keystore's own, and is what the PSBT's own derivation map is built with.
+     */
+    private static Set<ECKey> derivedKeys(Wallet wallet, WalletNode signingNode) {
+        Set<ECKey> keys = new LinkedHashSet<>();
+        for(Keystore keystore : wallet.getKeystores()) {
+            try {
+                ECKey pubKey = keystore.getPubKey(signingNode);
+                if(pubKey != null) {
+                    keys.add(wallet.getScriptType().getOutputKey(wallet.getPolicyType(), pubKey));
+                }
+            } catch(Exception e) {
+                //A keystore that cannot derive here contributes no key, and so vouches for nothing
+            }
+        }
+
+        return keys;
     }
 
     /**
@@ -1136,14 +1187,25 @@ public class AppServices {
      * so it can be copied into a transaction that drops the opted-in inputs and spent against a node that never
      * adopted the fork. The transaction is protected; that input is not, and saying only "protected" would hide it.
      */
-    public static int liftableSignatureCount(PSBT psbt) {
+    public static int liftableSignatureCount(PSBT psbt, Wallet wallet) {
         if(psbt == null) {
             return 0;
         }
 
+        Map<PSBTInput, WalletNode> signingNodes = (wallet != null && wallet.isValid())
+                ? wallet.getSigningNodes(psbt, false)
+                : Collections.emptyMap();
+
         int liftable = 0;
         for(PSBTInput psbtInput : psbt.getPsbtInputs()) {
-            for(TransactionSignature signature : psbtInput.getSignatures()) {
+            WalletNode signingNode = signingNodes.get(psbtInput);
+            if(signingNode == null) {
+                continue;
+            }
+
+            //Verified for the same reason the opt-in count is: a push that merely looks like a signature
+            //would otherwise be reported as a spendable copy of one
+            for(TransactionSignature signature : psbtInput.getVerifiedSignatures(derivedKeys(wallet, signingNode)).values()) {
                 if((signature.sighashFlags & SigHash.UNIFIED_FLAG) == 0
                         && (signature.sighashFlags & SigHash.ANYONECANPAY.value) != 0) {
                     liftable++;

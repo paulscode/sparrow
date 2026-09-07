@@ -1048,7 +1048,10 @@ public class HeadersController extends TransactionFormController implements Init
     private void updateOptInStatus(SigHash psbtSigHash) {
         //Counted off the signatures rather than taken from the declared hash type, because a transaction assembled
         //from per-device PSBTs carries signatures the declaration does not describe
-        int[] counts = AppServices.signatureOptInCounts(headersForm.getPsbt());
+        //The signing wallet where there is one, the viewing wallet otherwise. Without either, nothing can
+        //be verified and the count reports no opt-ins rather than guessing from the witness.
+        Wallet vouchingWallet = headersForm.getSigningWallet() != null ? headersForm.getSigningWallet() : headersForm.getWallet();
+        int[] counts = AppServices.signatureOptInCounts(headersForm.getPsbt(), vouchingWallet);
         int optedInSignatures = counts[0];
         int signatures = counts[1];
 
@@ -1060,7 +1063,7 @@ public class HeadersController extends TransactionFormController implements Init
             label.setText(UnifiedSigHashDecision.summaryFor(optedIn));
             label.setGraphic(optedIn ? GlyphUtils.getSuccessGlyph() : GlyphUtils.getWarningGlyph());
             label.setTooltip(new Tooltip(optedInStatusDetail(optedIn, everySignature, optedInSignatures, signatures,
-                    AppServices.liftableSignatureCount(headersForm.getPsbt()))));
+                    AppServices.liftableSignatureCount(headersForm.getPsbt(), vouchingWallet))));
         }
     }
 
