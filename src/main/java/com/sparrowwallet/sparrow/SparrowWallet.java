@@ -46,7 +46,7 @@ public class SparrowWallet {
      * there was no way to ask a user which one they were running. That matters from this release on,
      * because what it fixes is the kind of thing you need to know somebody has.
      */
-    public static final String APP_VERSION_SUFFIX = "-blake2b.4";
+    public static final String APP_VERSION_SUFFIX = "-blake2b.5";
     public static final String APP_HOME_PROPERTY = ApplicationDir.getHomeProperty(APP_NAME);
     public static final String NETWORK_ENV_PROPERTY = "SPARROW_NETWORK";
     public static final String JPACKAGE_APP_PATH = "jpackage.app-path";
