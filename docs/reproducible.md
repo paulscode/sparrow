@@ -1,5 +1,10 @@
 # Reproducible builds
 
+> **This page is upstream Sparrow's, and describes upstream's releases.** The releases of this fork
+> are built by GitHub Actions from the tag, and nobody has yet reproduced one independently. The
+> procedure below should apply, but treat a mismatch against a `-blake2b.N` release as unverified
+> rather than as evidence about the binary, and please report it.
+
 Reproducibility is a goal of the Sparrow Wallet project.
 As of v1.5.0 and later, it is possible to recreate the exact binaries in the Github releases (specifically, the contents of the `.tar.gz` and `.zip` files).
 

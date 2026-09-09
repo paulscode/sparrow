@@ -1,18 +1,27 @@
 # Security Policy
 
+This is the policy for **Sparrow (BLAKE2b)**, the fork at `paulscode/sparrow` that follows the
+BLAKE2b chain. It is not upstream Sparrow's policy and these are not upstream's maintainers.
+
+**Where the issue belongs.** If it reproduces on an upstream Sparrow build, it is upstream's, and
+reporting it here first delays the fix for far more people: report it to [upstream
+Sparrow](https://github.com/sparrowwallet/sparrow/security/advisories/new) instead. If it is
+specific to this fork, or you are not sure, report it here.
+
 ## Reporting a Vulnerability
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-Instead, report them privately using GitHub's [Security tab](https://github.com/sparrowwallet/sparrow/security/advisories/new) for this repository. This creates a private security advisory visible only to you and the maintainers.
+Instead, report them privately using GitHub's [Security tab](https://github.com/paulscode/sparrow/security/advisories/new) for this repository. This creates a private security advisory visible only to you and the maintainers.
 
-If you are unable to use GitHub, you may email mail@sparrowwallet.com. Sensitive reports can be encrypted to [craigraw's GPG key](https://keybase.io/craigraw) (fingerprint `D4D0D3202FC06849A257B38DE94618334C674B40`).
+Sensitive reports can be encrypted to the GPG key this fork's releases are signed with, fingerprint
+`FF76D4843EBD7FA06D92DC0CB8AB7B8E7E280E1A`.
 
 ### What to include
 
 To help triage the report quickly, please include as much of the following as you can:
 
-- The Sparrow version, operating system, and how Sparrow was installed (installer, package, or built from source)
+- The version, which About and `--version` report (for example `2.5.5-blake2b.6`), the operating system, and how it was installed (installer, package, or built from source)
 - A description of the vulnerability and its impact
 - Steps to reproduce, ideally with a proof of concept
 - Any relevant configuration (network, wallet type, connected server or hardware wallet)
@@ -50,13 +59,15 @@ There is currently no bug bounty programme for Sparrow.
 
 ## Supported Versions
 
-Security fixes are made against the latest release only. Users are encouraged to run the most recent version, available from [sparrowwallet.com](https://sparrowwallet.com/download/) or the [GitHub releases](https://github.com/sparrowwallet/sparrow/releases) page.
+Security fixes are made against the latest release only. Users are encouraged to run the most recent version, available from this repository's [releases](https://github.com/paulscode/sparrow/releases) page. Releases of this fork are not distributed by sparrowwallet.com.
 
-Release binaries are signed with the GPG key above, and are [reproducible from source](docs/reproducible.md) from v1.5.0 onwards. Verifying the signature on a download before installing is strongly recommended.
+Release binaries are signed with the GPG key above. Verifying the signature on a download before installing is strongly recommended. Upstream's binaries are reproducible from source from v1.5.0 onwards and the [instructions](docs/reproducible.md) carry over, but this fork's binaries are built by GitHub Actions from the tag and reproducibility has not been verified independently.
 
 ## Scope
 
-This policy covers Sparrow and its submodules, [Drongo](https://github.com/sparrowwallet/drongo) (Bitcoin protocol and wallet primitives) and [Lark](https://github.com/sparrowwallet/lark) (USB hardware wallet interaction). Report issues in any of them here rather than on the submodule repositories, so that a fix and a Sparrow release can be coordinated.
+This policy covers this fork and its submodules, [Drongo](https://github.com/paulscode/drongo) (Bitcoin protocol and wallet primitives) and [Lark](https://github.com/paulscode/lark) (USB hardware wallet interaction), on their `blake2b` branches. Report issues in any of them here rather than on the submodule repositories, so that a fix and a release can be coordinated.
+
+Because this build follows a chain whose replay protection is opt in, one class of issue matters here that does not upstream: anything that puts a transaction, or a user, on the chain that kept SHA256d without their choosing it. A source that silently describes the other chain is in scope even where it would be harmless upstream.
 
 Examples of issues we are particularly interested in:
 
