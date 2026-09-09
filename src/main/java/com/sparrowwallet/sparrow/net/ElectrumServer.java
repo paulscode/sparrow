@@ -1393,6 +1393,28 @@ public class ElectrumServer {
         }).collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
+    /**
+     * The header this server serves at the height that settles which chain it follows, as hex, or null where it serves none.
+     *
+     * <p>Asked once at connect time, before anything is trusted, and answered with null rather than an exception on any
+     * failure: whether not having an answer is fatal is {@link VariableHeaders#getChainMismatchError}'s decision to make,
+     * and it has a second source to weigh against. A server too far behind to hold this height is the ordinary reason
+     * there is no answer.
+     */
+    public String getChainIdentityHeader() {
+        int height = VariableHeaders.chainIdentityHeight();
+        if(height < 0) {
+            return null;
+        }
+
+        try {
+            return VariableHeaders.singleHeaderHex(electrumServerRpc.getBlockHeadersChunk(getTransport(), height, 1));
+        } catch(Exception e) {
+            log.debug("Server did not serve the block header at height " + height, e);
+            return null;
+        }
+    }
+
     public Map<Integer, BlockHeader> getBlockHeaders(Wallet wallet, Set<BlockTransactionHash> references) throws ServerException {
         try {
             Map<Integer, BlockHeader> blockHeaderMap = new TreeMap<>();
@@ -3143,7 +3165,7 @@ public class ElectrumServer {
                         //connection: there the server is the user's own node and which chain it follows is a decision they already
                         //made when they configured it.
                         if(Config.get().getServerType() != ServerType.BITCOIN_CORE) {
-                            String chainError = VariableHeaders.getChainMismatchError(features);
+                            String chainError = VariableHeaders.getChainMismatchError(features, electrumServer.getChainIdentityHeader());
                             if(chainError != null) {
                                 throw new ServerException(chainError);
                             }

@@ -6,6 +6,7 @@ import com.sparrowwallet.drongo.protocol.Blake2bDeployment;
 import com.sparrowwallet.drongo.protocol.BlockHeader;
 import com.sparrowwallet.drongo.protocol.BlockHeaderV2;
 import com.sparrowwallet.drongo.protocol.ProtocolException;
+import com.sparrowwallet.drongo.protocol.Sha256Hash;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -243,6 +244,33 @@ public class VariableHeaders {
     }
 
     /**
+     * The height whose header settles which chain a server follows, or -1 where this network has no such height.
+     *
+     * <p>The first block mined under BLAKE2b, because it is the first one whose format differs. Every header below it is
+     * 80 bytes on both chains and tells them apart only by hash; this one is 164 bytes on the chain this build follows
+     * and 80 on the chain that kept SHA256d, so the answer is legible in a single header without pinning anything.
+     */
+    public static int chainIdentityHeight() {
+        Network network = Network.get();
+        int height = Blake2bDeployment.activationHeight(network);
+        return supportsV2(network) && height != Integer.MAX_VALUE ? height : -1;
+    }
+
+    /**
+     * The one header a single-header response carries, as hex, or null where the response does not hold exactly one.
+     *
+     * <p>Here rather than at the call site because the two wire forms are this class's problem: below protocol 1.6 the
+     * header arrives as {@code hex} and at 1.6 and above as a one element {@code headers} list, and Fulcrum answers in
+     * the second form while electrs answers in the first.
+     */
+    public static String singleHeaderHex(BlockHeaders chunk) {
+        if(chunk == null || countCarried(chunk) != 1) {
+            return null;
+        }
+        return chunk.headers == null ? chunk.hex : chunk.headers.getFirst();
+    }
+
+    /**
      * Why this server should not be used, or null if it should.
      *
      * <p>This build follows the BLAKE2b chain, and on mainnet that is one of two chains sharing a genesis block, a network
@@ -250,36 +278,87 @@ public class VariableHeaders {
      * by every check Sparrow already makes, syncs perfectly well, and shows balances and confirmations for a chain the
      * user did not choose. That is silent, and on mainnet it is silent about money.
      *
-     * <p>{@code blake2b_fork} is what distinguishes them: a server reports the height its chain changed proof of work, and
-     * a server whose chain never did omits the field. Both answers are useful, so both are checked.
+     * <p>The header at {@link #chainIdentityHeight} is what settles it, and it is served by every Electrum server on
+     * either chain because it is ordinary chain data rather than an extension. It says two things: whether that chain
+     * changed proof of work at that height, from the format of the header alone, and which such chain it is, from the
+     * block's hash against {@link Blake2bDeployment#activationBlockHash}.
      *
-     * <p>Absent is refused rather than tolerated, which is the deliberate half of this. A server that does not implement
-     * the field at all is indistinguishable from a server on the unforked chain, and treating "cannot tell" as "probably
-     * fine" is how the silent case comes back. The cost is that this build only talks to a server that reports the field.
+     * <p>{@code server.features} is read too, but only as corroboration. It carries {@code blake2b_fork} on a server that
+     * implements the proposal this fork's electrs does, and a fork point that disagrees is a contradiction worth refusing
+     * whatever the header says. Its absence is not: Fulcrum has no such field and follows this chain perfectly well, and
+     * an earlier build of this one refused every Fulcrum server on that basis. Requiring an extension is requiring one
+     * implementation.
+     *
+     * <p>What is still refused is not being able to tell. A server that serves neither the header nor the field is
+     * indistinguishable from a server on the other chain, and treating "cannot tell" as "probably fine" is how the silent
+     * case comes back.
      *
      * @param features the server's {@code server.features} response, or null if it did not answer
+     * @param activationHeader the header the server serves at {@link #chainIdentityHeight} as hex, or null if it served none
      */
-    public static String getChainMismatchError(ServerFeatures features) {
+    public static String getChainMismatchError(ServerFeatures features, String activationHeader) {
         Network network = Network.get();
-        int expectedHeight = Blake2bDeployment.activationHeight(network);
-        if(!supportsV2(network) || expectedHeight == Integer.MAX_VALUE) {
+        int expectedHeight = chainIdentityHeight();
+        if(expectedHeight < 0) {
             return null;    //no BLAKE2b deployment on this network, so there is nothing to disagree about
         }
 
-        if(features == null) {
-            return "The server did not answer server.features, so the chain it follows could not be established. "
-                    + "This build only connects to a server that reports its BLAKE2b fork point.";
+        ServerFeatures.Blake2bFork reported = features == null ? null : features.blake2b_fork;
+        if(reported != null) {
+            String contradiction = getReportedForkError(network, expectedHeight, reported);
+            if(contradiction != null) {
+                return contradiction;
+            }
         }
 
-        if(features.blake2b_fork == null) {
+        if(activationHeader != null) {
+            return getServedHeaderError(network, expectedHeight, activationHeader);
+        }
+
+        if(reported != null) {
+            return null;    //the server names this chain's fork point, which is the question that was asked
+        }
+
+        return "The chain this server follows could not be established: it did not serve the block header at height "
+                + expectedHeight + ", and it does not report a BLAKE2b fork point. This build follows the BLAKE2b chain, "
+                + "which on " + network + " forked at that height.";
+    }
+
+    /** Whether the fork point a server reports is this chain's. */
+    private static String getReportedForkError(Network network, int expectedHeight, ServerFeatures.Blake2bFork reported) {
+        if(reported.height == null || reported.height != expectedHeight) {
+            return "The server reports a BLAKE2b fork at height " + reported.height + ", but " + network + " forked at height "
+                    + expectedHeight + ". These are different chains.";
+        }
+
+        Sha256Hash expectedHash = Blake2bDeployment.activationBlockHash(network);
+        if(expectedHash != null && reported.hash != null && !expectedHash.toString().equalsIgnoreCase(reported.hash)) {
+            return "The server reports the block at height " + expectedHeight + " as " + reported.hash + ", but on this chain it is "
+                    + expectedHash + ". These are different chains.";
+        }
+
+        return null;
+    }
+
+    /** Whether the header a server serves at the activation height is this chain's. */
+    private static String getServedHeaderError(Network network, int expectedHeight, String activationHeader) {
+        BlockHeader header;
+        try {
+            header = split(Utils.hexToBytes(activationHeader), 1).getFirst();
+        } catch(ProtocolException | IllegalArgumentException e) {
+            return "The chain this server follows could not be established: its block header at height " + expectedHeight
+                    + " could not be read (" + e.getMessage() + ").";
+        }
+
+        if(!header.isV2()) {
             return "The server is following a chain that has not changed its proof of work. This build follows the BLAKE2b "
                     + "chain, which on " + network + " forked at height " + expectedHeight + ".";
         }
 
-        Integer reportedHeight = features.blake2b_fork.height;
-        if(reportedHeight == null || reportedHeight != expectedHeight) {
-            return "The server reports a BLAKE2b fork at height " + reportedHeight + ", but " + network + " forked at height "
-                    + expectedHeight + ". These are different chains.";
+        Sha256Hash expectedHash = Blake2bDeployment.activationBlockHash(network);
+        if(expectedHash != null && !expectedHash.equals(header.getHash())) {
+            return "The server's block at height " + expectedHeight + " is " + header.getHash() + ", but on this chain it is "
+                    + expectedHash + ". These are different chains.";
         }
 
         return null;
