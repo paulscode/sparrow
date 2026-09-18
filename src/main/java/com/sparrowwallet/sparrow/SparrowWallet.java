@@ -48,7 +48,7 @@ public class SparrowWallet {
      * upstream 2.5.6. Reported by About and by --version, which is the only way to ask a user which
      * build they are on: every release before 2.5.5-blake2b.4 called itself plain 2.5.5.
      */
-    public static final String APP_VERSION_SUFFIX = "-blake2b.2";
+    public static final String APP_VERSION_SUFFIX = "-blake2b.3";
     public static final String APP_HOME_PROPERTY = ApplicationDir.getHomeProperty(APP_NAME);
     public static final String NETWORK_ENV_PROPERTY = "SPARROW_NETWORK";
     public static final String JPACKAGE_APP_PATH = "jpackage.app-path";

@@ -105,9 +105,14 @@ public class MigrationVersionsTest {
                 changed.add(entry.getKey() + " is gone, and a migration a wallet has applied cannot be removed");
                 continue;
             }
+            //Hashed over content with line endings normalised, not over the raw bytes. Git hands these files
+            //out with CRLF on Windows, so a raw hash is a hash of the checkout rather than of the migration,
+            //and this test failed there while passing everywhere else. Flyway is insensitive to the same
+            //thing for the same reason: it checksums over lines, so a CRLF checkout validates fine.
+            String content = Files.readString(file).replace("\r\n", "\n");
             java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
             StringBuilder hex = new StringBuilder();
-            for(byte b : digest.digest(Files.readAllBytes(file))) {
+            for(byte b : digest.digest(content.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
                 hex.append(String.format("%02x", b));
             }
             if(!hex.toString().equals(entry.getValue())) {
