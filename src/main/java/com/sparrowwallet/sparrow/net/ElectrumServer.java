@@ -3233,6 +3233,12 @@ public class ElectrumServer {
                         //height compiled into this build, and without it the decision is taken on the shipped
                         //schedule alone and recorded as uncorroborated. Set on every connect, including to null,
                         //so a height never outlives the server that reported it.
+                        //
+                        //Before the refusal below rather than after, deliberately. A server that disagrees is
+                        //refused and the connection fails, but the wallet can still be asked to sign offline
+                        //afterwards, and then this decides. Recording the height of the server just refused makes
+                        //that a mismatch and declines the opt-in, which is the safe answer; setting it only after
+                        //a server is accepted would leave an older, agreeing server's corroboration standing.
                         AppServices.setNodeHardforkHeight(features != null && features.blake2b_fork != null
                                 ? features.blake2b_fork.height : null);
 
