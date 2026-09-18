@@ -3228,6 +3228,14 @@ public class ElectrumServer {
                             }
                         }
 
+                        //Hand the node's own activation height to the opt-in decision, or clear it where this
+                        //server does not report one. blake2b_fork is the only thing that can cross check the
+                        //height compiled into this build, and without it the decision is taken on the shipped
+                        //schedule alone and recorded as uncorroborated. Set on every connect, including to null,
+                        //so a height never outlives the server that reported it.
+                        AppServices.setNodeHardforkHeight(features != null && features.blake2b_fork != null
+                                ? features.blake2b_fork.height : null);
+
                         //Refuse a server on the other side of the chain split. On mainnet the two chains share a genesis block, a
                         //network name and an address format, so every other check here passes against either, and the wallet would
                         //show balances and confirmations for a chain the user did not choose. Not applied to a Bitcoin Core
@@ -3584,6 +3592,9 @@ public class ElectrumServer {
 
         @Subscribe
         public void disconnection(DisconnectionEvent event) {
+            //The next server may report a different height, or none, so the reported-once warnings are
+            //allowed to speak again rather than being suppressed by what the last connection said
+            AppServices.clearNodeHardforkHeight();
             cancel();
         }
     }
