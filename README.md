@@ -83,6 +83,29 @@ When updating to the latest HEAD
 
 Upstream's release binaries are reproducible from v1.5.0 onwards (pre codesigning and installer packaging), and the [instructions on reproducing the binaries](docs/reproducible.md) carry over. This fork's binaries are built by GitHub Actions from the tag, and reproducibility has not been verified independently.
 
+## Merging upstream
+
+Upstream changes are merged in as they are released. Two things about this fork are easy to undo by
+accident while doing that, and both fail somewhere other than the merge.
+
+**Database migrations are a shared sequence with no coordination.** Upstream's set ends at `V10`;
+this fork adds `V11__UnifiedSigHash.sql` for the keystore's unified sighash mark. The first upstream
+release that adds a `V11` of its own gives two files claiming version 11. Nothing conflicts, because
+the filenames differ, and Flyway then refuses to resolve them: every wallet fails to open with
+"Failed to open wallet file".
+
+When that happens, **renumber upstream's incoming migration, not this fork's**. `V11` shipped in
+2.5.5-blake2b.2 and is recorded as version 11 in the history of every wallet created since. Upstream's
+new file has been applied by nobody using this fork, so moving it to the next free version costs
+nothing.
+
+**A migration that has already run is frozen, comments included.** Flyway checksums each file and
+validates it on every open, so changing one byte of an applied migration fails every existing wallet,
+not just new ones. If a change is genuinely needed it has to be a new migration with a new version.
+
+`MigrationVersionsTest` enforces both: it fails the build on a duplicate version, and it pins every
+shipped migration by content hash.
+
 ## Running
 
 If you prefer to run it directly from source, it can be launched from within the project directory with
