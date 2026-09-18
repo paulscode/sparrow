@@ -367,13 +367,14 @@ public class SendController extends WalletFormController implements Initializabl
             };
         });
 
-        fee.setTextFormatter(new CoinTextFormatter(Config.get().getUnitFormat()));
-        fee.textProperty().addListener(feeListener);
-
         BitcoinUnit unit = getBitcoinUnit(Config.get().getBitcoinUnit());
         feeAmountUnit.getSelectionModel().select(BitcoinUnit.BTC.equals(unit) ? 0 : 1);
+        fee.setTextFormatter(new CoinTextFormatter(Config.get().getUnitFormat(), feeAmountUnit.getValue()));
+        fee.textProperty().addListener(feeListener);
+
         feeAmountUnit.valueProperty().addListener((observable, oldValue, newValue) -> {
             Long value = getFeeValueSats(oldValue);
+            fee.setTextFormatter(new CoinTextFormatter(Config.get().getUnitFormat(), newValue));
             if(value != null) {
                 setFeeValueSats(value);
             }
@@ -917,7 +918,7 @@ public class SendController extends WalletFormController implements Initializabl
             long utxoTxFee = unconfirmedUtxoTxs.stream().mapToLong(BlockTransaction::getFee).sum();
             double utxoTxSize = unconfirmedUtxoTxs.stream().mapToDouble(blkTx -> blkTx.getTransaction().getVirtualSize()).sum();
             long thisFee = walletTransaction.getFee();
-            double thisSize = walletTransaction.getTransaction().getVirtualSize();
+            double thisSize = walletTransaction.getVirtualSize();
             double thisRate = thisFee / thisSize;
             double effectiveRate = (utxoTxFee + thisFee) / (utxoTxSize + thisSize);
             if(thisRate > effectiveRate) {
@@ -1674,7 +1675,7 @@ public class SendController extends WalletFormController implements Initializabl
         setFeeRate(getFeeRate());
         if(fee.getTextFormatter() instanceof CoinTextFormatter coinTextFormatter && coinTextFormatter.getUnitFormat() != event.getUnitFormat()) {
             Long value = getFeeValueSats(coinTextFormatter.getUnitFormat(), feeAmountUnit.getSelectionModel().getSelectedItem());
-            fee.setTextFormatter(new CoinTextFormatter(event.getUnitFormat()));
+            fee.setTextFormatter(new CoinTextFormatter(event.getUnitFormat(), feeAmountUnit.getValue()));
 
             if(value != null) {
                 setFeeValueSats(value);
@@ -1712,14 +1713,14 @@ public class SendController extends WalletFormController implements Initializabl
             }
             UtxoSelector utxoSelector = utxoSelectorProperty.get();
             if(utxoSelector instanceof MaxUtxoSelector) {
-                Collection<BlockTransactionHashIndex> utxos = event.getWalletTransaction().getSelectedUtxos().keySet();
+                Collection<BlockTransactionHashIndex> utxos = new ArrayList<>(event.getWalletTransaction().getSelectedUtxos().keySet());
                 utxos.remove(event.getUtxo());
                 PresetUtxoSelector presetUtxoSelector = new PresetUtxoSelector(utxos);
                 presetUtxoSelector.getExcludedUtxos().add(event.getUtxo());
                 utxoSelectorProperty.set(presetUtxoSelector);
                 updateTransaction(true);
             } else if(utxoSelector instanceof PresetUtxoSelector existingUtxoSelector) {
-                PresetUtxoSelector presetUtxoSelector = new PresetUtxoSelector(existingUtxoSelector.getPresetUtxos(), existingUtxoSelector.getExcludedUtxos());
+                PresetUtxoSelector presetUtxoSelector = new PresetUtxoSelector(new ArrayList<>(existingUtxoSelector.getPresetUtxos()), new ArrayList<>(existingUtxoSelector.getExcludedUtxos()));
                 presetUtxoSelector.getPresetUtxos().remove(event.getUtxo());
                 presetUtxoSelector.getExcludedUtxos().add(event.getUtxo());
                 utxoSelectorProperty.set(presetUtxoSelector);
@@ -1751,11 +1752,22 @@ public class SendController extends WalletFormController implements Initializabl
             UtxoSelector utxoSelector = utxoSelectorProperty.get();
             if(utxoSelector instanceof MaxUtxoSelector) {
                 updateTransaction(true);
-            } else if(utxoSelectorProperty().get() instanceof PresetUtxoSelector) {
-                PresetUtxoSelector presetUtxoSelector = new PresetUtxoSelector(((PresetUtxoSelector)utxoSelector).getPresetUtxos());
-                presetUtxoSelector.getPresetUtxos().removeAll(event.getUtxos());
+            } else if(utxoSelector instanceof PresetUtxoSelector existingUtxoSelector) {
+                List<BlockTransactionHashIndex> frozenUtxos = event.getUtxos().stream().filter(utxo -> utxo.getStatus() == Status.FROZEN).collect(Collectors.toList());
+                List<BlockTransactionHashIndex> frozenPresetUtxos = existingUtxoSelector.getPresetUtxos().stream()
+                        .filter(utxo -> frozenUtxos.stream().anyMatch(frozen -> frozen.getHash().equals(utxo.getHash()) && frozen.getIndex() == utxo.getIndex()))
+                        .collect(Collectors.toList());
+                BlockTransaction replacedTransaction = replacedTransactionProperty.get();
+                if(!frozenPresetUtxos.isEmpty() && replacedTransaction != null && !getWalletForm().getWallet().isSafeToAddInputsOrOutputs(replacedTransaction)) {
+                    //Removing an input could break the silent payment outputs of the replaced transaction, so clear the replacement rather than rebuild it
+                    clear(null);
+                    return;
+                }
+
+                PresetUtxoSelector presetUtxoSelector = new PresetUtxoSelector(new ArrayList<>(existingUtxoSelector.getPresetUtxos()), new ArrayList<>(existingUtxoSelector.getExcludedUtxos()));
+                presetUtxoSelector.getPresetUtxos().removeAll(frozenPresetUtxos);
                 utxoSelectorProperty.set(presetUtxoSelector);
-                updateTransaction(true);
+                updateTransaction(replacedTransaction == null);
             } else {
                 updateTransaction();
             }

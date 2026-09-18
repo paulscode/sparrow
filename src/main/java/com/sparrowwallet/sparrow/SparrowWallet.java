@@ -1,6 +1,8 @@
 package com.sparrowwallet.sparrow;
 
 import com.beust.jcommander.JCommander;
+import com.beust.jcommander.ParameterDescription;
+import com.beust.jcommander.ParameterException;
 import com.sparrowwallet.drongo.ApplicationDir;
 import com.sparrowwallet.drongo.Drongo;
 import com.sparrowwallet.drongo.Network;
@@ -38,15 +40,15 @@ public class SparrowWallet {
     /** What the user sees: window titles, the About dialog, the macOS application menu, tray and notifications. */
     public static final String APP_DISPLAY_NAME = "Sparrow (BLAKE2b)";
 
-    public static final String APP_VERSION = "2.5.5";
+    public static final String APP_VERSION = "2.5.6";
     /**
      * Which build of this fork it is, shown in About and by --version.
      *
-     * <p>Empty through every release so far, so all of them reported themselves as plain 2.5.5 and
-     * there was no way to ask a user which one they were running. That matters from this release on,
-     * because what it fixes is the kind of thing you need to know somebody has.
+     * <p>Counted from 1 again at each upstream version, so this is the first build of this fork on
+     * upstream 2.5.6. Reported by About and by --version, which is the only way to ask a user which
+     * build they are on: every release before 2.5.5-blake2b.4 called itself plain 2.5.5.
      */
-    public static final String APP_VERSION_SUFFIX = "-blake2b.6";
+    public static final String APP_VERSION_SUFFIX = "-blake2b.1";
     public static final String APP_HOME_PROPERTY = ApplicationDir.getHomeProperty(APP_NAME);
     public static final String NETWORK_ENV_PROPERTY = "SPARROW_NETWORK";
     public static final String JPACKAGE_APP_PATH = "jpackage.app-path";
@@ -65,7 +67,28 @@ public class SparrowWallet {
 
         Args args = new Args();
         JCommander jCommander = JCommander.newBuilder().addObject(args).programName(APP_NAME.toLowerCase(Locale.ROOT)).acceptUnknownOptions(true).build();
-        jCommander.parse(argv);
+        try {
+            jCommander.parse(argv);
+            Optional<String> unknownOption = jCommander.getUnknownOptions().stream().filter(arg -> arg.startsWith("-")).findFirst();
+            if(unknownOption.isPresent()) {
+                throw new ParameterException("Unknown option: " + unknownOption.get());
+            }
+            //Flags take no value, and the = separator would otherwise set the flag and pass the value on as a file or URI
+            for(ParameterDescription description : jCommander.getParameters()) {
+                if(description.getParameterized().getType() == boolean.class) {
+                    for(String name : description.getParameter().names()) {
+                        if(Arrays.stream(argv).anyMatch(arg -> arg.startsWith(name + "="))) {
+                            throw new ParameterException("Option " + name + " does not take a value");
+                        }
+                    }
+                }
+            }
+        } catch(ParameterException e) {
+            System.err.println(e.getMessage());
+            jCommander.usage();
+            System.exit(1);
+        }
+
         if(args.help) {
             jCommander.usage();
             System.exit(0);

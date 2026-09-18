@@ -13,6 +13,7 @@ import com.sparrowwallet.drongo.silentpayments.SilentPayment;
 import com.sparrowwallet.drongo.silentpayments.SilentPaymentAddress;
 import com.sparrowwallet.drongo.uri.BitcoinURIParseException;
 import com.sparrowwallet.drongo.wallet.Payment;
+import com.sparrowwallet.drongo.wallet.Wallet;
 import com.sparrowwallet.sparrow.AppServices;
 import com.sparrowwallet.sparrow.EventManager;
 import com.sparrowwallet.sparrow.UnitFormat;
@@ -36,6 +37,8 @@ import javafx.util.StringConverter;
 import org.controlsfx.control.spreadsheet.*;
 
 import java.io.*;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
@@ -47,16 +50,18 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class SendToManyDialog extends Dialog<List<Payment>> {
+    private final Wallet wallet;
     private final BitcoinUnit bitcoinUnit;
     private final UnitFormat unitFormat;
     private final UnitFormatDoubleCellType amountCellType;
     private final SpreadsheetView spreadsheetView;
     public static final SendToAddressCellType SEND_TO_ADDRESS = new SendToAddressCellType();
 
-    public SendToManyDialog(BitcoinUnit bitcoinUnit, UnitFormat unitFormat, List<Payment> payments) {
+    public SendToManyDialog(Wallet wallet, BitcoinUnit bitcoinUnit, UnitFormat unitFormat, List<Payment> payments) {
+        this.wallet = wallet;
         this.bitcoinUnit = bitcoinUnit;
         this.unitFormat = unitFormat == null ? UnitFormat.DOT : unitFormat;
-        this.amountCellType = new UnitFormatDoubleCellType(this.unitFormat);
+        this.amountCellType = new UnitFormatDoubleCellType(this.unitFormat, bitcoinUnit);
 
         final DialogPane dialogPane = new SendToManyDialogPane();
         setDialogPane(dialogPane);
@@ -222,34 +227,27 @@ public class SendToManyDialog extends Dialog<List<Payment>> {
                                     }
 
                                     try {
-                                        String rawAmount = csvReader.get(1).trim();
-                                        String groupingStripped = rawAmount.replaceAll(Pattern.quote(unitFormat.getGroupingSeparator()), "");
-                                        long amount;
-                                        if(bitcoinUnit == BitcoinUnit.BTC) {
-                                            String normalised = groupingStripped.replaceAll(Pattern.quote(unitFormat.getDecimalSeparator()), ".");
-                                            double doubleAmount = Double.parseDouble(normalised);
-                                            amount = bitcoinUnit.getSatsValue(doubleAmount);
-                                        } else {
-                                            amount = Long.parseLong(groupingStripped);
-                                        }
-                                        String label = csvReader.get(2);
-                                        Optional<String> optDnsPaymentHrn = DnsPayment.getHrn(csvReader.get(0));
-                                        if(optDnsPaymentHrn.isPresent()) {
-                                            Payment payment = new Payment(null, label, amount, false);
-                                            csvPayments.add(new SendToPayment(payment, new SendToAddress(optDnsPaymentHrn.get())));
-                                        } else {
-                                            try {
-                                                SilentPaymentAddress silentPaymentAddress = SilentPaymentAddress.from(csvReader.get(0));
-                                                Payment payment = new SilentPayment(silentPaymentAddress, label, amount, false);
-                                                csvPayments.add(new SendToPayment(payment, SendToAddress.fromPayment(payment)));
-                                            } catch(Exception e) {
-                                                Address address = Address.fromString(csvReader.get(0));
-                                                Payment payment = new Payment(address, label, amount, false);
-                                                csvPayments.add(new SendToPayment(payment, SendToAddress.fromPayment(payment)));
+                                        //Read as a pasted amount is, so digits beyond the places of the unit are cut - a row without an amount is probably a header line
+                                        Double value = amountCellType.convertValue(csvReader.get(1));
+                                        if(value != null) {
+                                            long amount = bitcoinUnit.getSatsValue(value);
+                                            String label = csvReader.get(2);
+                                            Optional<String> optDnsPaymentHrn = DnsPayment.getHrn(csvReader.get(0));
+                                            if(optDnsPaymentHrn.isPresent()) {
+                                                Payment payment = new Payment(null, label, amount, false);
+                                                csvPayments.add(new SendToPayment(payment, new SendToAddress(optDnsPaymentHrn.get())));
+                                            } else {
+                                                try {
+                                                    SilentPaymentAddress silentPaymentAddress = SilentPaymentAddress.from(csvReader.get(0));
+                                                    Payment payment = new SilentPayment(silentPaymentAddress, label, amount, false);
+                                                    csvPayments.add(new SendToPayment(payment, SendToAddress.fromPayment(payment)));
+                                                } catch(Exception e) {
+                                                    Address address = Address.fromString(csvReader.get(0));
+                                                    Payment payment = new Payment(address, label, amount, false);
+                                                    csvPayments.add(new SendToPayment(payment, SendToAddress.fromPayment(payment)));
+                                                }
                                             }
                                         }
-                                    } catch(NumberFormatException e) {
-                                        //ignore and continue - probably a header line
                                     } catch(InvalidAddressException e) {
                                         AppServices.showErrorDialog("Invalid Address", e.getMessage());
                                     }
@@ -370,10 +368,12 @@ public class SendToManyDialog extends Dialog<List<Payment>> {
 
     private static class UnitFormatDoubleCellType extends SpreadsheetCellType<Double> {
         private final UnitFormat unitFormat;
+        private final BitcoinUnit bitcoinUnit;
 
-        UnitFormatDoubleCellType(UnitFormat unitFormat) {
-            super(new UnitFormatDoubleConverter(unitFormat));
+        UnitFormatDoubleCellType(UnitFormat unitFormat, BitcoinUnit bitcoinUnit) {
+            super(new UnitFormatDoubleConverter(unitFormat, bitcoinUnit));
             this.unitFormat = unitFormat;
+            this.bitcoinUnit = bitcoinUnit;
         }
 
         @Override
@@ -389,7 +389,7 @@ public class SendToManyDialog extends Dialog<List<Payment>> {
 
         @Override
         public SpreadsheetCellEditor createEditor(SpreadsheetView view) {
-            return new UnitFormatDoubleEditor(view, unitFormat);
+            return new UnitFormatDoubleEditor(view, unitFormat, bitcoinUnit);
         }
 
         @Override
@@ -428,10 +428,15 @@ public class SendToManyDialog extends Dialog<List<Payment>> {
     }
 
     private static class UnitFormatDoubleConverter extends StringConverterWithFormat<Double> {
-        private final UnitFormat unitFormat;
+        //2,100,000,000,000,000 sats is every bitcoin there will be
+        private static final int MAX_SATS_DIGITS = 16;
 
-        UnitFormatDoubleConverter(UnitFormat unitFormat) {
+        private final UnitFormat unitFormat;
+        private final BitcoinUnit bitcoinUnit;
+
+        UnitFormatDoubleConverter(UnitFormat unitFormat, BitcoinUnit bitcoinUnit) {
             this.unitFormat = unitFormat;
+            this.bitcoinUnit = bitcoinUnit;
         }
 
         @Override
@@ -439,12 +444,19 @@ public class SendToManyDialog extends Dialog<List<Payment>> {
             if(str == null || str.isEmpty()) {
                 return null;
             }
-            String normalised = str.trim()
-                    .replaceAll(Pattern.quote(unitFormat.getGroupingSeparator()), "")
-                    .replaceAll(Pattern.quote(unitFormat.getDecimalSeparator()), ".");
+            String normalised = str.trim().replaceAll(Pattern.quote(unitFormat.getGroupingSeparator()), "").replaceAll(Pattern.quote(unitFormat.getDecimalSeparator()), ".");
             try {
-                return Double.valueOf(normalised);
-            } catch(NumberFormatException e) {
+                //Read as an exact decimal, which takes the exponent a script writes a small amount with, but not the hexadecimal, NaN or Infinity a double parses
+                BigDecimal sats = new BigDecimal(normalised).scaleByPowerOfTen(bitcoinUnit == BitcoinUnit.BTC ? 8 : 0);
+                //Sized by its digits before the point without rescaling it, as rescaling an exponent far out of range takes minutes
+                long wholeDigits = (long)sats.precision() - sats.scale();
+                if(sats.signum() < 0 || wholeDigits > MAX_SATS_DIGITS) {
+                    return null;
+                }
+
+                //Digits beyond the places of the unit are cut rather than rounded, so the cell shows the amount of the payment
+                return bitcoinUnit.getValue(wholeDigits < 1 ? 0 : sats.setScale(0, RoundingMode.DOWN).longValueExact());
+            } catch(NumberFormatException | ArithmeticException e) {
                 return null;
             }
         }
@@ -470,11 +482,11 @@ public class SendToManyDialog extends Dialog<List<Payment>> {
         private final UnitFormat unitFormat;
         private final TextField textField;
 
-        UnitFormatDoubleEditor(SpreadsheetView view, UnitFormat unitFormat) {
+        UnitFormatDoubleEditor(SpreadsheetView view, UnitFormat unitFormat, BitcoinUnit bitcoinUnit) {
             super(view);
             this.unitFormat = unitFormat;
             this.textField = new TextField();
-            this.textField.setTextFormatter(new CoinTextFormatter(unitFormat));
+            this.textField.setTextFormatter(new CoinTextFormatter(unitFormat, bitcoinUnit));
         }
 
         @Override
@@ -557,26 +569,29 @@ public class SendToManyDialog extends Dialog<List<Payment>> {
             return payment instanceof SilentPayment ? new SendToAddress(((SilentPayment)payment).getSilentPaymentAddress()) : new SendToAddress(payment.getAddress());
         }
 
-        public Payment toPayment(String label, long value, boolean sendMax) throws DnsPaymentValidationException, IOException, ExecutionException, InterruptedException, BitcoinURIParseException {
+        public Payment toPayment(Wallet wallet, String label, long value, boolean sendMax) throws DnsPaymentValidationException, IOException, ExecutionException, InterruptedException, BitcoinURIParseException {
             if(hrn != null) {
                 DnsPayment dnsPayment = DnsPaymentCache.getDnsPayment(hrn);
                 if(dnsPayment == null) {
                     DnsPaymentResolver resolver = new DnsPaymentResolver(hrn);
                     Optional<DnsPayment> optDnsPayment = resolver.resolve(AppServices.getProxy());
-                    if(optDnsPayment.isPresent()) {
-                        dnsPayment = optDnsPayment.get();
-                        if(dnsPayment.hasAddress()) {
-                            DnsPaymentCache.putDnsPayment(dnsPayment.bitcoinURI().getAddress(), dnsPayment);
-                        } else if(dnsPayment.hasSilentPaymentAddress()) {
-                            DnsPaymentCache.putDnsPayment(dnsPayment.bitcoinURI().getSilentPaymentAddress(), dnsPayment);
-                        }
-                        return getPayment(optDnsPayment.get(), label, value, sendMax);
-                    } else {
+                    if(optDnsPayment.isEmpty()) {
                         throw new IllegalArgumentException("Payment to " + hrn + " could not be resolved.");
                     }
-                } else {
-                    return getPayment(dnsPayment, label, value, sendMax);
+
+                    dnsPayment = optDnsPayment.get();
                 }
+
+                //Cached under the address this payment will be looked up by, which is how its proof chain reaches the PSBT output. A name found by
+                //hrn alone can be held under the other address, having been resolved for a wallet of the other silent payments capability
+                Payment payment = getPayment(wallet, dnsPayment, label, value, sendMax);
+                if(payment instanceof SilentPayment silentPayment) {
+                    DnsPaymentCache.putDnsPayment(silentPayment.getSilentPaymentAddress(), dnsPayment);
+                } else {
+                    DnsPaymentCache.putDnsPayment(payment.getAddress(), dnsPayment);
+                }
+
+                return payment;
             }
 
             if(silentPaymentAddress != null) {
@@ -586,11 +601,11 @@ public class SendToManyDialog extends Dialog<List<Payment>> {
             }
         }
 
-        private static Payment getPayment(DnsPayment dnsPayment, String label, long value, boolean sendMax) {
-            if(dnsPayment.hasAddress()) {
-                return new Payment(dnsPayment.bitcoinURI().getAddress(), label, value, sendMax);
-            } else if(dnsPayment.hasSilentPaymentAddress()) {
+        private static Payment getPayment(Wallet wallet, DnsPayment dnsPayment, String label, long value, boolean sendMax) {
+            if(dnsPayment.hasSilentPaymentAddress() && (!dnsPayment.hasAddress() || wallet.canSendSilentPayments())) {
                 return new SilentPayment(dnsPayment.bitcoinURI().getSilentPaymentAddress(), label, value, sendMax);
+            } else if(dnsPayment.hasAddress()) {
+                return new Payment(dnsPayment.bitcoinURI().getAddress(), label, value, sendMax);
             } else {
                 throw new IllegalArgumentException("Payment to " + dnsPayment + " has no associated address.");
             }
@@ -650,7 +665,7 @@ public class SendToManyDialog extends Dialog<List<Payment>> {
                 }
 
                 if(sendToAddress != null && value != null) {
-                    payments.add(sendToAddress.toPayment(label, bitcoinUnit.getSatsValue(value), false));
+                    payments.add(sendToAddress.toPayment(wallet, label, bitcoinUnit.getSatsValue(value), false));
                 }
             }
 

@@ -2,6 +2,7 @@ package com.sparrowwallet.sparrow.net.cormorant.bitcoind;
 
 import com.github.arteam.simplejsonrpc.client.JsonRpcClient;
 import com.github.arteam.simplejsonrpc.client.exception.JsonRpcException;
+import com.google.common.base.Suppliers;
 import com.google.common.collect.Sets;
 import com.sparrowwallet.drongo.KeyPurpose;
 import com.sparrowwallet.drongo.OutputDescriptor;
@@ -40,6 +41,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class BitcoindClient {
@@ -52,6 +54,7 @@ public class BitcoindClient {
     private static final long PRUNED_RESCAN_TIMEGAP_MILLIS = 7200*1000;
 
     //Error codes from https://github.com/bitcoin/bitcoin/blob/master/src/rpc/protocol.h
+    public static final int RPC_INVALID_PARAMETER = -8;
     public static final int RPC_WALLET_NOT_FOUND = -18;
 
     public static final String WALLET_ALREADY_LOADING_MESSAGE = "Wallet already loading.";
@@ -358,7 +361,10 @@ public class BitcoindClient {
 
     private Set<String> addDescriptors(Map<String, ScanDate> descriptors) throws ScanDateBeforePruneException, ImportFailedException {
         boolean forceRescan = descriptors.values().stream().anyMatch(scanDate -> scanDate.forceRescan);
-        if(!initialized || forceRescan) {
+        //Bitcoin Core extends the range of a descriptor as its addresses are used, so a wanted range beyond the one last seen is compared against its current range
+        boolean extending = initialized && descriptors.entrySet().stream().anyMatch(entry -> entry.getValue().range != null && importedDescriptors.containsKey(entry.getKey())
+                && importedDescriptors.get(entry.getKey()).range != null && entry.getValue().range > importedDescriptors.get(entry.getKey()).range);
+        if(!initialized || forceRescan || extending) {
             ListDescriptorsResult listDescriptorsResult = getBitcoindService().listDescriptors(false);
             for(ListDescriptorResult result : listDescriptorsResult.descriptors()) {
                 String descriptor = OutputDescriptor.normalize(result.desc());
@@ -480,9 +486,10 @@ public class BitcoindClient {
 
         List<ListTransaction> sentTransactions = new ArrayList<>();
         Map<String, Boolean> conflictCache = new HashMap<>();
+        Supplier<Boolean> mempoolLoaded = Suppliers.memoize(() -> getBitcoindService().getMempoolInfo().loaded());
 
         for(ListTransaction listTransaction : listSinceBlock.transactions()) {
-            if(isConflicted(listTransaction, conflictCache)) {
+            if(isConflicted(listTransaction, conflictCache, mempoolLoaded)) {
                 updatedScriptHashes.addAll(store.purgeTransaction(listTransaction.txid()));
                 continue;
             }
@@ -562,14 +569,16 @@ public class BitcoindClient {
         }
     }
 
-    private boolean isConflicted(ListTransaction listTransaction, Map<String, Boolean> conflictCache) {
-        if(listTransaction.confirmations() == 0 && !listTransaction.walletconflicts().isEmpty()) {
+    private boolean isConflicted(ListTransaction listTransaction, Map<String, Boolean> conflictCache, Supplier<Boolean> mempoolLoaded) {
+        //A transaction replaced by one outside the wallet, or depending on a replaced parent, has mempool conflicts and no wallet conflicts (Bitcoin Core v28+)
+        if(listTransaction.confirmations() == 0 && (!listTransaction.walletconflicts().isEmpty() || (listTransaction.mempoolconflicts() != null && !listTransaction.mempoolconflicts().isEmpty()))) {
             Boolean active = conflictCache.computeIfAbsent(listTransaction.txid(), txid -> {
                 try {
                     getBitcoindService().getMempoolEntry(txid);
                     return true;
                 } catch(JsonRpcException e) {
-                    return false;
+                    //A block can confirm the transaction after it was listed, which leaves it for the next poll to record as confirmed
+                    return getBitcoindService().getTransaction(txid, true, false).get("confirmations") instanceof Number confirmations && confirmations.intValue() > 0;
                 }
             });
 
@@ -577,9 +586,12 @@ public class BitcoindClient {
                 for(String conflictedTxid : listTransaction.walletconflicts()) {
                     conflictCache.put(conflictedTxid, false);
                 }
+
+                return false;
             }
 
-            return !active;
+            //A restarted node lists its unconfirmed transactions before it has loaded its mempool, so none can be judged absent until it has
+            return mempoolLoaded.get();
         } else {
             return listTransaction.confirmations() < 0;
         }
@@ -721,10 +733,20 @@ public class BitcoindClient {
                 }
 
                 if(lastBlock != null && tip != null) {
-                    String blockhash = getBitcoindService().getBlockHash(tip.height());
-                    if(!lastBlock.equals(blockhash)) {
-                        log.warn("Reorg detected, block height " + tip.height() + " was " + lastBlock + " and now is " + blockhash);
-                        lastBlock = null;
+                    try {
+                        String blockhash = getBitcoindService().getBlockHash(tip.height());
+                        if(!lastBlock.equals(blockhash)) {
+                            log.warn("Reorg detected, block height " + tip.height() + " was " + lastBlock + " and now is " + blockhash);
+                            lastBlock = null;
+                        }
+                    } catch(JsonRpcException e) {
+                        //The active chain no longer reaches the last seen tip height, so the block has been disconnected
+                        if(e.getErrorMessage() != null && e.getErrorMessage().getCode() == RPC_INVALID_PARAMETER) {
+                            log.warn("Reorg detected, block height " + tip.height() + " was " + lastBlock + " and is now above the chain tip");
+                            lastBlock = null;
+                        } else {
+                            throw e;
+                        }
                     }
                 }
 

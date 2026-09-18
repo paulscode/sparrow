@@ -639,7 +639,27 @@ public class HeadersController extends TransactionFormController implements Init
 
     private void updateSize() {
         size.setText(headersForm.getTransaction().getSize() + " B");
-        virtualSize.setText(String.format("%.2f", headersForm.getTransaction().getVirtualSize()) + " vB");
+        virtualSize.setText(String.format("%.2f", getVirtualSize()) + " vB");
+    }
+
+    /**
+     * Returns the virtual size the transaction will have once broadcast. Until a silent payments transaction is signed its output scripts have not
+     * been computed, so the transaction is short of the P2TR outputs they become, and the size the send tab derived the fee from is the larger one.
+     */
+    private double getVirtualSize() {
+        double virtualSize = headersForm.getTransaction().getVirtualSize();
+        if(headersForm.getPsbt() != null) {
+            //Signing computes the output scripts on the PSBT outputs alone, so whether one is still to be added is asked of the transaction being sized
+            List<TransactionOutput> txOutputs = headersForm.getTransaction().getOutputs();
+            List<PSBTOutput> psbtOutputs = headersForm.getPsbt().getPsbtOutputs();
+            for(int i = 0; i < txOutputs.size(); i++) {
+                if(psbtOutputs.get(i).getSilentPaymentAddress() != null && txOutputs.get(i).getScriptBytes().length == 0) {
+                    virtualSize += SilentPayment.OUTPUT_SCRIPT_LENGTH;
+                }
+            }
+        }
+
+        return virtualSize;
     }
 
     private Long calculateFee(Map<Sha256Hash, BlockTransaction> inputTransactions) {
@@ -652,6 +672,11 @@ public class HeadersController extends TransactionFormController implements Init
             BlockTransaction inputTx = inputTransactions.get(input.getOutpoint().getHash());
             if(inputTx == null && headersForm.getInputTransactions() != null) {
                 inputTx = headersForm.getInputTransactions().get(input.getOutpoint().getHash());
+            }
+
+            if(inputTx != null && inputTx.getTransaction() == null) {
+                fee.setText("Unknown");
+                return null;
             }
 
             if(inputTx == null) {
@@ -676,7 +701,7 @@ public class HeadersController extends TransactionFormController implements Init
 
     private void updateFee(Long feeAmt) {
         fee.setValue(feeAmt);
-        double feeRateAmt = feeAmt.doubleValue() / headersForm.getTransaction().getVirtualSize();
+        double feeRateAmt = feeAmt.doubleValue() / getVirtualSize();
         feeRate.setText(String.format("%.2f", feeRateAmt) + " sats/vB" + (headersForm.isTransactionFinalized() ? "" : " (non-final)"));
     }
 
@@ -817,7 +842,7 @@ public class HeadersController extends TransactionFormController implements Init
     private BlockTransactionHashIndex getBlockTransactionInput(Map<Sha256Hash, BlockTransaction> inputTransactions, TransactionInput txInput) {
         if(inputTransactions != null) {
             BlockTransaction blockTransaction = inputTransactions.get(txInput.getOutpoint().getHash());
-            if(blockTransaction != null) {
+            if(blockTransaction != null && blockTransaction.getTransaction() != null) {
                 TransactionOutput txOutput = blockTransaction.getTransaction().getOutputs().get((int) txInput.getOutpoint().getIndex());
                 return new BlockTransactionHashIndex(blockTransaction.getHash(), blockTransaction.getHeight(), blockTransaction.getDate(), blockTransaction.getFee(), txInput.getOutpoint().getIndex(), txOutput.getValue());
             }
@@ -885,7 +910,7 @@ public class HeadersController extends TransactionFormController implements Init
         } else if(currentHeight == null) {
             blockStatus.setText(blockTransaction.getHeight() > 0 ? "Confirmed" : "Unconfirmed");
         } else {
-            int confirmations = blockTransaction.getHeight() > 0 ? currentHeight - blockTransaction.getHeight() + 1 : 0;
+            int confirmations = blockTransaction.getConfirmations(currentHeight);
             if(confirmations == 0) {
                 blockStatus.setText("Unconfirmed");
             } else if(confirmations == 1) {
@@ -1265,8 +1290,9 @@ public class HeadersController extends TransactionFormController implements Init
         boolean addBbqrOption = headersForm.getSigningWallet().getKeystores().stream().anyMatch(keystore -> keystore.getWalletModel().showBbqr());
         QREncoding encoding = headersForm.getSigningWallet().getKeystores().stream().allMatch(keystore -> keystore.getWalletModel().selectBbqr()) ? QREncoding.BBQR : QREncoding.UR;
 
-        //Don't include non witness utxo fields for segwit wallets when displaying the PSBT as a QR - it can add greatly to the time required for scanning
-        boolean includeNonWitnessUtxos = !Arrays.asList(ScriptType.WITNESS_TYPES).contains(headersForm.getSigningWallet().getScriptType());
+        //Don't include non witness utxo fields for segwit wallets when displaying the PSBT as a QR unless required - it can add greatly to the time required for scanning
+        boolean includeNonWitnessUtxos = !Arrays.asList(ScriptType.WITNESS_TYPES).contains(headersForm.getSigningWallet().getScriptType())
+                || (headersForm.getPsbt().getPsbtInputs().size() > 1 && headersForm.getSigningWallet().getKeystores().stream().anyMatch(keystore -> keystore.getWalletModel().includeNonWitnessUtxoForQR()));
         byte[] psbtBytes = headersForm.getPsbt().getForExport().serialize(true, includeNonWitnessUtxos);
 
         CryptoPSBT cryptoPSBT = new CryptoPSBT(psbtBytes);
@@ -1537,7 +1563,7 @@ public class HeadersController extends TransactionFormController implements Init
         }
 
         if(fee.getValue() > 0) {
-            double feeRateAmt = fee.getValue() / headersForm.getTransaction().getVirtualSize();
+            double feeRateAmt = fee.getValue() / getVirtualSize();
             if(feeRateAmt > AppServices.getLongFeeRatesRange().getLast() || (AppServices.getTargetBlockFeeRates() != null && feeRateAmt > AppServices.getDefaultFeeRate() * FEE_MULTIPLE_LIMIT)) {
                 Optional<ButtonType> optType = AppServices.showWarningDialog("Very high fee rate!",
                         "This transaction pays a very high fee rate of " + String.format("%.0f", feeRateAmt) + " sats/vB.\n\nBroadcast this transaction?", ButtonType.YES, ButtonType.NO);
@@ -1652,9 +1678,13 @@ public class HeadersController extends TransactionFormController implements Init
                 Matcher feeMatcher = RBF_INSUFFICIENT_FEE.matcher(failMessage);
                 Matcher feeRateMatcher = RBF_INSUFFICIENT_FEE_RATE.matcher(failMessage);
                 if(feeMatcher.matches() && fee.getValue() > 0) {
-                    long currentAdditionalFee = (long)(Double.parseDouble(feeMatcher.group(1)) * Transaction.SATOSHIS_PER_BITCOIN);
-                    long requiredAdditionalFee = (long)(Double.parseDouble(feeMatcher.group(2)) * Transaction.SATOSHIS_PER_BITCOIN);
+                    long currentAdditionalFee = Math.round(Double.parseDouble(feeMatcher.group(1)) * Transaction.SATOSHIS_PER_BITCOIN);
+                    long requiredAdditionalFee = Math.round(Double.parseDouble(feeMatcher.group(2)) * Transaction.SATOSHIS_PER_BITCOIN);
                     long requiredFee = fee.getValue() - currentAdditionalFee + requiredAdditionalFee;
+                    if(failMessage.contains("less fees than conflicting txs")) {
+                        //Reported against the fees of the replaced transactions alone, which the replacement must also exceed by its own relay cost
+                        requiredFee = requiredAdditionalFee + (long)Math.ceil(getVirtualSize() * AppServices.getMinimumRelayFeeRate());
+                    }
                     AppServices.showErrorDialog("Error broadcasting transaction", "The fee for the replacement transaction was insufficient. Increase the fee to at least " + requiredFee + " sats to try again.");
                 } else if(feeRateMatcher.matches()) {
                     double requiredFeeRate = Double.parseDouble(feeRateMatcher.group(2)) * Transaction.SATOSHIS_PER_BITCOIN / 1000;
@@ -1792,6 +1822,8 @@ public class HeadersController extends TransactionFormController implements Init
     public void blockTransactionFetched(BlockTransactionFetchedEvent event) {
         if(event.getTxId().equals(headersForm.getTransaction().getTxId())) {
             if(event.getBlockTransaction() != null && (!Sha256Hash.ZERO_HASH.equals(event.getBlockTransaction().getBlockHash()) || headersForm.getBlockTransaction() == null)) {
+                //Kept as well as shown, including where no input transaction could be fetched, so that the confirmation count follows new blocks
+                headersForm.setBlockTransaction(event.getBlockTransaction());
                 updateBlockchainForm(event.getBlockTransaction(), AppServices.getCurrentBlockHeight());
             } else if(headersForm.getPsbt() == null && headersForm.getBlockTransaction() == null && event.getPageStart() == 0) {
                 //Only the first page asks about the transaction itself, so only its silence says the transaction is not on chain

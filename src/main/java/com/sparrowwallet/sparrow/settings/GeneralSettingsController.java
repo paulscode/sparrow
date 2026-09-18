@@ -3,6 +3,7 @@ package com.sparrowwallet.sparrow.settings;
 import com.sparrowwallet.drongo.wallet.Wallet;
 import com.sparrowwallet.sparrow.AppServices;
 import com.sparrowwallet.sparrow.EventManager;
+import com.sparrowwallet.sparrow.Mode;
 import com.sparrowwallet.sparrow.control.TextfieldDialog;
 import com.sparrowwallet.sparrow.control.UnlabeledToggleSwitch;
 import com.sparrowwallet.sparrow.event.*;
@@ -233,6 +234,12 @@ public class GeneralSettingsController extends SettingsDetailController {
     }
 
     private void updateCurrencies(ExchangeSource exchangeSource) {
+        if(Config.get().getMode() == Mode.OFFLINE) {
+            Currency configCurrency = Config.get().getFiatCurrency();
+            updateCurrencies(configCurrency == null || exchangeSource == ExchangeSource.NONE ? List.of() : List.of(configCurrency));
+            return;
+        }
+
         ExchangeSource.CurrenciesService currenciesService = new ExchangeSource.CurrenciesService(exchangeSource);
         currenciesService.setOnSucceeded(event -> {
             updateCurrencies(currenciesService.getValue());
@@ -269,7 +276,11 @@ public class GeneralSettingsController extends SettingsDetailController {
             fiatCurrency.setDisable(true);
         }
 
-        currenciesLoadWarning.setVisible(exchangeSource.getValue() != ExchangeSource.NONE && (currencies.isEmpty() || unavailable));
+        //Upstream's offline suppression, applied to our wider condition: a configured currency the list
+        //does not offer means the conversion lookup failed, which is worth flagging, but not when the
+        //user has chosen to be offline and nothing was going to be fetched anyway.
+        currenciesLoadWarning.setVisible(exchangeSource.getValue() != ExchangeSource.NONE
+                && (currencies.isEmpty() || unavailable) && Config.get().getMode() != Mode.OFFLINE);
 
         //Always fire event regardless of previous selection to update rates
         EventManager.get().post(new FiatCurrencySelectedEvent(exchangeSource.getValue(), fiatCurrency.getValue()));

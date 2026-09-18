@@ -98,7 +98,7 @@ public class TransactionDiagram extends GridPane {
                 }
 
                 scenePane.getStylesheets().add(AppServices.class.getResource("general.css").toExternalForm());
-                if(Config.get().getTheme() == Theme.DARK) {
+                if(AppServices.isDarkTheme()) {
                     scenePane.getStylesheets().add(AppServices.class.getResource("darktheme.css").toExternalForm());
                 }
                 scenePane.getStylesheets().add(AppServices.class.getResource("wallet/wallet.css").toExternalForm());
@@ -504,8 +504,8 @@ public class TransactionDiagram extends GridPane {
                     } else if(input instanceof InvisibleBlockTransactionHashIndex) {
                         tooltip.setText("");
                     } else {
-                        if(walletTx.getInputTransactions() != null && walletTx.getInputTransactions().get(input.getHash()) != null) {
-                            BlockTransaction blockTransaction = walletTx.getInputTransactions().get(input.getHash());
+                        BlockTransaction blockTransaction = walletTx.getInputTransactions() == null ? null : walletTx.getInputTransactions().get(input.getHash());
+                        if(blockTransaction != null && blockTransaction.getTransaction() != null) {
                             TransactionOutput txOutput = blockTransaction.getTransaction().getOutputs().get((int) input.getIndex());
                             Address fromAddress = txOutput.getScript().getToAddress();
                             inputValue = txOutput.getValue();
@@ -945,8 +945,8 @@ public class TransactionDiagram extends GridPane {
         Label txLabel = new Label(txDesc);
         boolean isFinalized = walletTx.getTransaction().hasScriptSigs() || walletTx.getTransaction().hasWitnesses();
         Tooltip tooltip = new Tooltip(walletTx.getTransaction().getLength() + " bytes\n"
-                + String.format("%.2f", walletTx.getTransaction().getVirtualSize()) + " vBytes"
-                + (walletTx.getFee() < 0 ? "" : "\n" + String.format("%.2f", walletTx.getFee() / walletTx.getTransaction().getVirtualSize()) + " sats/vB" + (isFinalized ? "" : " (non-final)")));
+                + String.format("%.2f", walletTx.getVirtualSize()) + " vBytes"
+                + (walletTx.getFee() < 0 ? "" : "\n" + String.format("%.2f", walletTx.getFee() / walletTx.getVirtualSize()) + " sats/vB" + (isFinalized ? "" : " (non-final)")));
         tooltip.setShowDelay(new Duration(TOOLTIP_SHOW_DELAY));
         tooltip.setShowDuration(Duration.INDEFINITE);
         tooltip.getStyleClass().add("transaction-tooltip");
@@ -998,7 +998,7 @@ public class TransactionDiagram extends GridPane {
             transactionDiagram.setFinal(true);
             transactionDiagram.setExpanded(isExpanded());
             transactionDiagram.setBackground(new Background(new BackgroundFill(Color.TRANSPARENT, null, null)));
-            transactionDiagram.setStyle("-fx-text-background-color: " + (Config.get().getTheme() == Theme.DARK ? "#ffffff" : "#000000"));
+            transactionDiagram.setStyle("-fx-text-background-color: " + (AppServices.isDarkTheme() ? "#ffffff" : "#000000"));
             updateDerivedDiagram(transactionDiagram);
             Scene scene = new Scene(transactionDiagram);
             scene.setFill(Color.TRANSPARENT);

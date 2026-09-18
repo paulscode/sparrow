@@ -16,6 +16,7 @@ import com.sparrowwallet.sparrow.io.StorageException;
 import com.sparrowwallet.sparrow.net.AllHistoryChangedException;
 import com.sparrowwallet.sparrow.net.ElectrumServer;
 import com.sparrowwallet.sparrow.io.Storage;
+import io.reactivex.disposables.Disposable;
 import io.reactivex.rxjavafx.schedulers.JavaFxScheduler;
 import io.reactivex.subjects.PublishSubject;
 import javafx.application.Platform;
@@ -61,12 +62,14 @@ public class WalletForm {
 
     private final BooleanProperty lockedProperty = new SimpleBooleanProperty(false);
 
+    private final Disposable refreshNodesDisposable;
+
     public WalletForm(Storage storage, Wallet currentWallet) {
         this.storage = storage;
         this.wallet = currentWallet;
 
         refreshNodesSubject = PublishSubject.create();
-        refreshNodesSubject.buffer(1, TimeUnit.SECONDS)
+        refreshNodesDisposable = refreshNodesSubject.buffer(1, TimeUnit.SECONDS)
                 .filter(walletNodes -> !walletNodes.isEmpty())
                 .observeOn(JavaFxScheduler.platform())
                 .subscribe(walletNodes -> {
@@ -317,11 +320,15 @@ public class WalletForm {
             currentWallet.setBirthHeight(min.getAsInt());
         }
 
-        if(blockHeight != null) {
-            currentWallet.setStoredBlockHeight(blockHeight);
+        //The stored block height is where a silent payments wallet begins its next scan, so it can only follow the chain once a scan has covered it
+        boolean scanned = wallet.getPolicyType() != PolicyType.SINGLE_SP || (spSubscriptionHeld && !spScanInProgress);
+        Integer scannedBlockHeight = scanned ? blockHeight : null;
+
+        if(scannedBlockHeight != null) {
+            currentWallet.setStoredBlockHeight(scannedBlockHeight);
         }
 
-        return notifyIfChanged(blockHeight, currentWallet, previousWallet, nestedHistoryChangedNodes);
+        return notifyIfChanged(scannedBlockHeight, currentWallet, previousWallet, nestedHistoryChangedNodes);
     }
 
     private List<WalletNode> notifyIfChanged(Integer blockHeight, Wallet currentWallet, Wallet previousWallet, List<WalletNode> nestedHistoryChangedNodes) {
@@ -455,6 +462,16 @@ public class WalletForm {
     }
 
     public NodeEntry getFreshNodeEntry(KeyPurpose keyPurpose, NodeEntry currentEntry) {
+        NodeEntry freshEntry = getUnusedNodeEntry(keyPurpose, currentEntry);
+        //A label marks an address already given out to a payer, even though nothing has been received to it yet
+        while(freshEntry.getLabel() != null && !freshEntry.getLabel().isEmpty()) {
+            freshEntry = getUnusedNodeEntry(keyPurpose, freshEntry);
+        }
+
+        return freshEntry;
+    }
+
+    private NodeEntry getUnusedNodeEntry(KeyPurpose keyPurpose, NodeEntry currentEntry) {
         NodeEntry rootEntry = getNodeEntry(keyPurpose);
         WalletNode freshNode = getWallet().getFreshNode(keyPurpose, currentEntry == null ? null : currentEntry.getNode());
 
@@ -470,9 +487,21 @@ public class WalletForm {
         return freshEntry;
     }
 
+    public void ensureSufficientGapLimit(NodeEntry nodeEntry) {
+        WalletNode node = nodeEntry.getNode();
+        Integer highestIndex = wallet.getNode(node.getKeyPurpose()).getHighestUsedIndex();
+        int highestUsedIndex = highestIndex == null ? -1 : highestIndex;
+        int existingGapLimit = wallet.getGapLimit();
+        if(node.getIndex() > highestUsedIndex + existingGapLimit) {
+            wallet.setGapLimit(Math.max(wallet.getGapLimit(), node.getIndex() - highestUsedIndex));
+            EventManager.get().post(new WalletGapLimitChangedEvent(getWalletId(), wallet, existingGapLimit));
+        }
+    }
+
     public WalletTransactionsEntry getWalletTransactionsEntry() {
         if(walletTransactionsEntry == null) {
             walletTransactionsEntry = new WalletTransactionsEntry(wallet);
+            walletTransactionsEntry.registerForConfirmations();
         }
 
         return walletTransactionsEntry;
@@ -500,6 +529,10 @@ public class WalletForm {
 
     public List<NodeEntry> getAccountEntries() {
         return accountEntries;
+    }
+
+    void disposeRefreshNodes() {
+        refreshNodesDisposable.dispose();
     }
 
     @Subscribe
@@ -539,6 +572,10 @@ public class WalletForm {
             //Replacing the WalletForm's wallet here is only possible because we immediately clear all derived structures and do a full wallet refresh
             wallet = event.getWallet();
 
+            //Entries bound to the replaced wallet would otherwise match neither a block height event nor a tab close for the new one
+            if(walletTransactionsEntry != null) {
+                walletTransactionsEntry.unregisterForConfirmations();
+            }
             walletTransactionsEntry = null;
             walletUtxosEntry = null;
             accountEntries.clear();
@@ -820,8 +857,16 @@ public class WalletForm {
         for(WalletTabData tabData : event.getClosedWalletTabData()) {
             if(tabData.getWalletForm() == this) {
                 EventManager.get().unregister(this);
+                disposeRefreshNodes();
+                if(walletTransactionsEntry != null) {
+                    walletTransactionsEntry.unregisterForConfirmations();
+                }
                 for(WalletForm nestedWalletForm : nestedWalletForms) {
                     EventManager.get().unregister(nestedWalletForm);
+                    nestedWalletForm.disposeRefreshNodes();
+                    if(nestedWalletForm.walletTransactionsEntry != null) {
+                        nestedWalletForm.walletTransactionsEntry.unregisterForConfirmations();
+                    }
                 }
                 if(wallet.isValid()) {
                     AppServices.clearTransactionHistoryCache(wallet);

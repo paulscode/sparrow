@@ -4,17 +4,16 @@ import com.github.arteam.simplejsonrpc.core.annotation.JsonRpcMethod;
 import com.github.arteam.simplejsonrpc.core.annotation.JsonRpcOptional;
 import com.github.arteam.simplejsonrpc.core.annotation.JsonRpcParam;
 import com.github.arteam.simplejsonrpc.core.annotation.JsonRpcService;
-import com.google.common.collect.Iterables;
 import com.sparrowwallet.sparrow.EventManager;
 import com.sparrowwallet.sparrow.event.NewBlockEvent;
-import com.sparrowwallet.sparrow.event.SilentPaymentsHistoryUpdatedEvent;
-import com.sparrowwallet.sparrow.event.SilentPaymentsScanProgressEvent;
 import com.sparrowwallet.sparrow.event.WalletNodeHistoryChangedEvent;
 import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 @JsonRpcService
 public class SubscriptionService {
@@ -35,16 +34,15 @@ public class SubscriptionService {
 
     @JsonRpcMethod("blockchain.scripthash.subscribe")
     public void scriptHashStatusUpdated(@JsonRpcParam("scripthash") final String scriptHash, @JsonRpcOptional @JsonRpcParam("status") final String status) {
-        List<String> existingStatuses = ElectrumServer.getSubscribedScriptHashes().get(scriptHash);
-        if(existingStatuses == null) {
+        Map<String, String> subscribedScriptHashes = ElectrumServer.getSubscribedScriptHashes();
+        if(!subscribedScriptHashes.containsKey(scriptHash)) {
             log.trace("Received script hash status update for non-wallet script hash: " + scriptHash);
-        } else if(status != null && existingStatuses.contains(status)) {
+        } else if(Objects.equals(status, subscribedScriptHashes.get(scriptHash))) {
             log.debug("Received script hash status update, but status has not changed");
             return;
         } else {
-            String oldStatus = Iterables.getLast(existingStatuses);
-            log.debug("Status updated for script hash " + scriptHash + ", was " + oldStatus + " now " + status);
-            existingStatuses.add(status);
+            log.debug("Status updated for script hash " + scriptHash + ", was " + subscribedScriptHashes.get(scriptHash) + " now " + status);
+            subscribedScriptHashes.put(scriptHash, status);
         }
 
         Platform.runLater(() -> EventManager.get().post(new WalletNodeHistoryChangedEvent(scriptHash, status)));
@@ -59,27 +57,14 @@ public class SubscriptionService {
             return;
         }
 
-        boolean justCompleted = false;
+        //A notification can reach the read thread before the subscribe response has been recorded, so the cache decides
+        //whether to apply it now, hold it until the canonical start height is known, or drop it as being from a prior subscribe
         cache.lock();
         try {
-            //Stale-notification filter: filter out notifications from a prior subscribe
-            Integer canonical = cache.getServerStart();
-            if(canonical == null || subscription.start_height != canonical) {
-                return;
-            }
-            cache.addEntries(history);
-            if(progress >= 1.0 && cache.isScanning()) {
-                cache.complete();
-                justCompleted = true;
-            }
+            ElectrumServer.postSilentPaymentsNotified(silentPaymentAddress,
+                    cache.applyOrHold(subscription.start_height, TcpTransport.getDeliveredResponses(), progress, history));
         } finally {
             cache.unlock();
-        }
-
-        Platform.runLater(() -> EventManager.get().post(new SilentPaymentsScanProgressEvent(silentPaymentAddress, progress)));
-
-        if(progress >= 1.0 && !justCompleted && !history.isEmpty()) {
-            Platform.runLater(() -> EventManager.get().post(new SilentPaymentsHistoryUpdatedEvent(silentPaymentAddress)));
         }
     }
 }
