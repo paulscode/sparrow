@@ -2063,6 +2063,18 @@ public class AppServices {
         return waylandDisplay != null && !waylandDisplay.isEmpty();
     }
 
+    /**
+     * Forgets the activation height the last server reported.
+     *
+     * Here rather than on a service that happens to receive the event: this class owns the field, and the
+     * clear has nothing to do with any service's lifecycle. It sat on HeaderSyncService's disconnection
+     * handler beside a cancel(), which worked and read like something a later tidy-up would drop.
+     */
+    @Subscribe
+    public void disconnection(DisconnectionEvent event) {
+        clearNodeHardforkHeight();
+    }
+
     @Subscribe
     public void newConnection(ConnectionEvent event) {
         setAnnouncedTip(new ChainTip(event.getBlockHeight(), event.getBlockHeader()));

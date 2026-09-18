@@ -3592,9 +3592,6 @@ public class ElectrumServer {
 
         @Subscribe
         public void disconnection(DisconnectionEvent event) {
-            //The next server may report a different height, or none, so the reported-once warnings are
-            //allowed to speak again rather than being suppressed by what the last connection said
-            AppServices.clearNodeHardforkHeight();
             cancel();
         }
     }

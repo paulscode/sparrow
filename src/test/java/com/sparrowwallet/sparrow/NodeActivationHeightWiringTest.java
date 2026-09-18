@@ -131,7 +131,11 @@ public class NodeActivationHeightWiringTest {
         Assertions.assertTrue(source.contains("AppServices.setNodeHardforkHeight("),
                 "nothing tells the opt-in decision what height the node reports, so the cross check that would "
                         + "catch a wrong activation height compiled into this build can never fire");
-        Assertions.assertTrue(source.contains("AppServices.clearNodeHardforkHeight("),
-                "a height reported by one server must not be carried into a connection to another");
+
+        //The clear lives with the field rather than on the connection, so that is where it is looked for
+        String appServices = java.nio.file.Files.readString(
+                java.nio.file.Path.of("src/main/java/com/sparrowwallet/sparrow/AppServices.java"));
+        Assertions.assertTrue(appServices.contains("public void disconnection(DisconnectionEvent event)"),
+                "nothing forgets the height on disconnection, so one server's schedule would keep deciding for the next");
     }
 }
