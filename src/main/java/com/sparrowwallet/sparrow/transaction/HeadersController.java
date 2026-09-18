@@ -1293,7 +1293,8 @@ public class HeadersController extends TransactionFormController implements Init
         //Don't include non witness utxo fields for segwit wallets when displaying the PSBT as a QR unless required - it can add greatly to the time required for scanning
         boolean includeNonWitnessUtxos = !Arrays.asList(ScriptType.WITNESS_TYPES).contains(headersForm.getSigningWallet().getScriptType())
                 || (headersForm.getPsbt().getPsbtInputs().size() > 1 && headersForm.getSigningWallet().getKeystores().stream().anyMatch(keystore -> keystore.getWalletModel().includeNonWitnessUtxoForQR()));
-        byte[] psbtBytes = headersForm.getPsbt().getForExport().serialize(true, includeNonWitnessUtxos);
+        PSBT exportedPsbt = AppServices.psbtForExport(headersForm.getSigningWallet(), headersForm.getPsbt());
+        byte[] psbtBytes = exportedPsbt.getForExport().serialize(true, includeNonWitnessUtxos);
 
         CryptoPSBT cryptoPSBT = new CryptoPSBT(psbtBytes);
         BBQR bbqr = addBbqrOption ? new BBQR(BBQRType.PSBT, psbtBytes) : null;
@@ -1380,7 +1381,7 @@ public class HeadersController extends TransactionFormController implements Init
             }
 
             try(FileOutputStream outputStream = new FileOutputStream(file)) {
-                outputStream.write(headersForm.getPsbt().getForExport().serialize());
+                outputStream.write(AppServices.psbtForExport(headersForm.getSigningWallet(), headersForm.getPsbt()).getForExport().serialize());
             } catch(IOException e) {
                 log.error("Error saving PSBT", e);
                 AppServices.showErrorDialog("Error saving PSBT", "Cannot write to " + file.getAbsolutePath());

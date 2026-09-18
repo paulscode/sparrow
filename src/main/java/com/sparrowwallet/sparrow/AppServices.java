@@ -1255,6 +1255,46 @@ public class AppServices {
     }
 
     /**
+     * The PSBT to export, with the opt-in dropped once the transaction no longer needs it declared.
+     *
+     * One opted-in signature makes a transaction unreplayable whatever the rest carry, so once the PSBT holds one,
+     * the declared type has done its work. Clearing it from there lets a signer that cannot produce the opt-in take
+     * its turn. {@link #psbtForDevice} does the same over USB, but a QR or a file has no device to ask, and a signer
+     * like Krux has no USB mode at all. Without this, a 2-of-3 whose marked signers are exactly the threshold becomes
+     * unspendable the moment one of them is lost.
+     *
+     * Before that signature exists the declaration is the only thing asking for the opt-in, so it is left alone and
+     * the marked signers go first.
+     *
+     * Ported from Shrike, which found this. Their reading is the same; only the counts API differs.
+     */
+    public static PSBT psbtForExport(Wallet wallet, PSBT psbt) {
+        if(wallet == null || psbt == null || wallet.getKeystores() == null) {
+            return psbt;
+        }
+
+        //Every signer can produce the opt-in, so nothing is locked out and the declaration costs nothing
+        if(wallet.getKeystores().stream().allMatch(AppServices::canKeystoreSignUnified)) {
+            return psbt;
+        }
+
+        //Read off the signatures, not the declaration: the declaration is what is about to be changed
+        if(!signatureOptInCounts(psbt, wallet).isProtected()) {
+            return psbt;
+        }
+
+        PSBT exportPsbt = psbt.copy();
+        for(PSBTInput psbtInput : exportPsbt.getPsbtInputs()) {
+            SigHash sigHash = psbtInput.getSigHash();
+            if(sigHash != null && sigHash.isUnified()) {
+                psbtInput.setSigHash(sigHash.withoutUnified());
+            }
+        }
+
+        return exportPsbt;
+    }
+
+    /**
      * Whether handing this PSBT to the device behind the given fingerprint would ask it for a hash type it has not
      * been marked as producing.
      *
