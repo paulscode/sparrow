@@ -48,7 +48,7 @@ public class ConfirmationsDescriptionTest {
      * cannot be moved at all.
      */
     @Test
-    public void aCoinbaseHeldByTheWindowSaysWhenItUnlocks() {
+    public void aCoinbaseHeldByTheLongRuleSaysWhenItUnlocks() {
         Network.set(Network.MAINNET);
         String description = ConfirmationsDescription.get(500, true, START, START + 500);
         assertTrue(description.contains("immature coinbase"), description);
@@ -66,15 +66,24 @@ public class ConfirmationsDescriptionTest {
     }
 
     /**
-     * A coinbase mined before the window keeps the short wording it had. Quoting a height for a coin that
-     * matures in sixteen hours would be worse than the count it replaces.
+     * A coinbase mined before the deployment is held by the long rule too, so it is told the same thing. The
+     * short wording is what a network without the rule gets, not what an early coin gets.
      */
     @Test
-    public void aCoinbaseBelowTheWindowKeepsTheOrdinaryWording() {
+    public void aCoinbaseMinedBeforeTheDeploymentIsAlsoGivenAHeight() {
         Network.set(Network.MAINNET);
         int coinbaseHeight = START - 5000;
         String description = ConfirmationsDescription.get(3, true, coinbaseHeight, coinbaseHeight + 2);
-        assertEquals("3 confirmations, immature coinbase", description);
+        assertEquals("3 confirmations, immature coinbase, spendable from block "
+                + (coinbaseHeight + RELEASE - START), description);
+    }
+
+    /** Where the rule is not deployed, the short wording stands, because sixteen hours needs no height. */
+    @Test
+    public void undeployedNetworksKeepTheShortWording() {
+        Network.set(Network.REGTEST);
+        assertEquals("3 confirmations, immature coinbase",
+                ConfirmationsDescription.get(3, true, 500, 502));
     }
 
     /** Missing inputs fall back rather than inventing a height. Both are reachable: the tip can be unknown. */

@@ -7,11 +7,20 @@ coin is locked for a hundred blocks, about sixteen hours, and the wallet's handl
 one constant and one filter. Nobody notices sixteen hours.
 
 This chain changed that. Knots deploys a temporary rule
-([bitcoinknots/bitcoin#419](https://github.com/bitcoinknots/bitcoin/pull/419)) under which every
-coinbase mined at or after height 973440 is unspendable until 979920 — roughly forty-five days,
-and the release notes say a full year is being considered for October. The wallet already
-follows the rule correctly, as of `LongCoinbaseMaturity` and the change to `CoinbaseTxoFilter`.
-What it does not do is *explain* it.
+([bitcoinknots/bitcoin#419](https://github.com/bitcoinknots/bitcoin/pull/419)) that raises the
+wait to 6480 blocks — roughly forty-five days, and the release notes say a full year is being
+considered for October. The wallet already follows the rule correctly, as of
+`LongCoinbaseMaturity` and the change to `CoinbaseTxoFilter`. What it does not do is *explain*
+it.
+
+The rule has two faces and only one of them matters here. Consensus refuses a spend only inside
+a deployment window bounded by heights 973440 and 979920, and only for coins mined inside it.
+Relay is blunter: an upgraded node requires the full 6480 blocks of *every* coinbase spend,
+whatever height the coin was mined at, and it keeps requiring it after the window closes. A
+wallet lives under relay, because a transaction nothing will carry is a transaction that fails.
+So the wallet's model is a flat depth, not a window, and the visible consequence is that coins
+mined in the forty-five days *before* the deployment stop being spendable when the network
+upgrades.
 
 The failure this is aimed at: a solo miner mines a block, sees the money arrive, and cannot
 spend it. Nothing in the interface says the coin is locked, nothing says why, nothing says
@@ -31,7 +40,8 @@ Already done, tested, on `main` (unpushed):
 - `CoinbaseTxoFilter` asks it, so immature coins are excluded from `getSpendableUtxos()` and
   cannot be selected into a transaction.
 - `ConfirmationsDescription` — the amount tooltip on the **Transactions** screen says
-  "immature coinbase, spendable from block 979920".
+  "immature coinbase, spendable from block N", where N is that coin's own block plus the
+  long depth.
 
 What that leaves, and what this document is about:
 
@@ -177,10 +187,9 @@ Show it **only when non-zero**, or every non-mining wallet carries a permanent z
 explaining a rule that will never apply to it.
 
 Wording: "Immature" is what Bitcoin Core calls it and what a miner will have seen. Keep the
-unlock height out of the label. During the window every coin mined in it unlocks at the same
-height, so one height would usually be right — but coins mined near the end of the window
-unlock later, on the ordinary hundred-block rule, so a single height in a summary line is not
-always true. The per-coin detail belongs on the per-coin row.
+unlock height out of the label. Every coin waits the same depth from its own block, so a wallet
+holding coins from several blocks has as many unlock heights as it has blocks, and no single
+height in a summary line is right. The per-coin detail belongs on the per-coin row.
 
 **Testable:** yes, the sum is a pure function of the children.
 
@@ -249,9 +258,9 @@ The cheapest honest improvement: when a transaction cannot be funded, ask
 covered it, and if so say that instead of implying the money is not there.
 
 Do not put a single unlock height in this message. It is a summary of possibly several coins,
-and for the same reason section 2 keeps the height off the balance label — coins mined near the
-end of the window unlock later, on the ordinary hundred-block rule — one height would sometimes
-be wrong. Name the amount and send the reader to the coins:
+and for the same reason section 2 keeps the height off the balance label — each coin unlocks a
+fixed depth after its own block, so several coins means several heights — one height would
+usually be wrong. Name the amount and send the reader to the coins:
 
 ```
 Insufficient spendable funds — 6.25 BTC is immature. See the UTXOs tab.
@@ -279,7 +288,7 @@ This is upstream's shape and is safe today for a reason that is not written down
 it: a wallet cannot hold a txo whose transaction it failed to fetch, because `ElectrumServer`
 throws `IllegalStateException` rather than admitting one (`ElectrumServer.java:2053` and
 `:2070`). It is a real invariant, and the filter's safety depends on it. If it ever softens —
-and a longer maturity window makes a restore against a pruned node more likely to be the case
+and a longer maturity wait makes a restore against a pruned node more likely to be the case
 that softens it — this filter silently starts offering immature coins for spending.
 
 Do not simply invert it. Failing closed on every unknown would make an ordinary wallet
@@ -362,9 +371,14 @@ implements it rather than one to settle on paper.
 **Do not hide immature coins.** They are the owner's. Hiding them produces a support message
 about missing money, which is worse than the one about unspendable money.
 
-**Do not hardcode 973440 or 979920 anywhere new.** They live in `LongCoinbaseMaturity` and
-nowhere else, they came from a release candidate for a pull request that was still open, and
-they have already moved once.
+**Do not hardcode 6480, 973440 or 979920 anywhere new.** The depth lives in
+`LongCoinbaseMaturity` and nowhere else, it came from a release candidate for a pull request
+that was still open, and the numbers behind it have already moved once.
 
 **Do not couple any of this to the 45-day figure.** Part two is a year. Everything here should
-read the window from `LongCoinbaseMaturity` and be indifferent to how wide it is.
+read the depth from `LongCoinbaseMaturity` and be indifferent to how large it is.
+
+**Do not reintroduce the window.** The deployment heights are a consensus detail; reading them
+into the wallet produces two wrong answers, offering pre-deployment coins that will not relay
+and hiding testnet4 coins that would. `LongCoinbaseMaturity` deliberately does not expose
+them.

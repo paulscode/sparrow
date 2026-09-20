@@ -34,9 +34,9 @@ public final class ConfirmationsDescription {
             return "Unconfirmed in mempool";
         }
 
-        //Only said for a coin the window is holding, which is what isFrozenByLongRule answers. Quoting a
-        //height for one that matures in sixteen hours would be worse than the count it replaces, so an
-        //ordinarily immature coinbase falls through to the wording below.
+        //Only said where the long rule is deployed, which is what isFrozenByLongRule answers. On a network
+        //without it a coinbase matures in sixteen hours, and quoting a height for that would be worse than
+        //the count it replaces, so it falls through to the wording below.
         if(isCoinbase && coinbaseHeight > 0 && currentBlockHeight != null
                 && LongCoinbaseMaturity.isFrozenByLongRule(Network.get(), coinbaseHeight, currentBlockHeight)) {
             //Said as a height rather than as a wait, because a wait is only as good as an assumed block
