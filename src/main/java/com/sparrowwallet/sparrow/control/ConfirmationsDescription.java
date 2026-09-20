@@ -2,7 +2,6 @@ package com.sparrowwallet.sparrow.control;
 
 import com.sparrowwallet.drongo.Network;
 import com.sparrowwallet.drongo.protocol.LongCoinbaseMaturity;
-import com.sparrowwallet.drongo.protocol.Transaction;
 import com.sparrowwallet.drongo.wallet.BlockTransactionHash;
 
 /**
@@ -35,17 +34,16 @@ public final class ConfirmationsDescription {
             return "Unconfirmed in mempool";
         }
 
+        //Only said for a coin the window is holding, which is what isFrozenByLongRule answers. Quoting a
+        //height for one that matures in sixteen hours would be worse than the count it replaces, so an
+        //ordinarily immature coinbase falls through to the wording below.
         if(isCoinbase && coinbaseHeight > 0 && currentBlockHeight != null
-                && !LongCoinbaseMaturity.isSpendable(Network.get(), coinbaseHeight, currentBlockHeight)) {
-            int spendableFrom = LongCoinbaseMaturity.spendableFromHeight(Network.get(), coinbaseHeight);
-            //Only worth saying for a coin the window is holding. Quoting a height for one that matures in
-            //sixteen hours is worse than the count it would replace, so this is left to fall through below
-            if(spendableFrom > coinbaseHeight + Transaction.COINBASE_MATURITY_THRESHOLD) {
-                //Said as a height rather than as a wait, because a wait is only as good as an assumed block
-                //interval and this chain's has not been near ten minutes
-                return confirmations + " confirmation" + (confirmations == 1 ? "" : "s")
-                        + ", immature coinbase, spendable from block " + spendableFrom;
-            }
+                && LongCoinbaseMaturity.isFrozenByLongRule(Network.get(), coinbaseHeight, currentBlockHeight)) {
+            //Said as a height rather than as a wait, because a wait is only as good as an assumed block
+            //interval and this chain's has not been near ten minutes
+            return confirmations + " confirmation" + (confirmations == 1 ? "" : "s")
+                    + ", immature coinbase, spendable from block "
+                    + LongCoinbaseMaturity.spendableFromHeight(Network.get(), coinbaseHeight);
         }
 
         if(confirmations < BlockTransactionHash.BLOCKS_TO_FULLY_CONFIRM) {
