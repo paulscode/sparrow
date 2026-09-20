@@ -49,9 +49,12 @@ from the spend menus. An immature coinbase is the same idea with a different cau
 consensus rather than by the owner. Every proposal below routes through that existing machinery
 rather than inventing a parallel one.
 
-**Height is the truth, time is the intuition.** The rule is defined in block heights. A
-duration is an estimate that depends on an assumed block interval, and this chain's has not
-been near ten minutes. Say the height; offer the estimate as an estimate, or not at all.
+**Height is the truth, time is the intuition.** The rule is defined in block heights, so a
+height is a fact and a duration is a guess: it depends on an assumed block interval, and this
+chain's has not been near ten minutes. Show both, and make which is which obvious. A user
+asking "when can I spend this" wants the duration; a user checking our work wants the height.
+Neither is served by showing only the other, and nobody is served by a duration precise enough
+to look like a promise.
 
 **Never show a coin as spendable when it is not, and never hide it.** It is the owner's money.
 It belongs in the balance and in the UTXO list. It must be visibly distinct and must not be
@@ -101,15 +104,30 @@ the table behaviour are not; they need eyes.
 lookup and the tip is a field read, so this should be cheap, but it is worth confirming on a
 wallet with many UTXOs before calling it done.
 
-### 2. An "Immature" balance, beside the two that already exist
+**Do not make maturity a `Status`.** `Status` (`drongo/.../wallet/Status.java`) has exactly one
+member, `FROZEN`. It is set by the owner, persisted in the wallet file, and round-tripped
+through labels import and export (`WalletLabels.java:103`, `:282`). Maturity is none of those
+things: it is derived from a height and a tip, it changes on its own as blocks arrive, and
+writing it down would make it wrong the moment the chain moved.
 
-The UTXOs screen already shows two figures, at `utxos.fxml:38` and `:41`, backed by:
+These two want to *look* alike on screen and must not *be* alike in the model. Say so in a
+comment next to whatever you add, because the resemblance is exactly the kind that invites a
+later tidy-up into one concept, and that tidy-up would persist a derived fact.
+
+### 2. An immature figure under the headline balance
+
+Both balance screens already carry the same two-line structure — `Balance:` and `Mempool:` —
+at `transactions.fxml:37` and `utxos.fxml:38`. So "part of this balance is not like the rest"
+is an established idea with an established shape, and the immature figure is a third line of
+exactly that kind rather than something new to learn.
+
+Put it on **both** screens, not just the UTXOs one. The headline balance is where people look;
+a figure confined to the UTXOs screen is only found by someone who already suspects there is
+something to find, which is precisely the user this is for.
+
+The sum belongs on `WalletUtxosEntry` beside the two that exist (`WalletUtxosEntry.java:90`):
 
 ```java
-public long getBalance() {
-    return getChildren().stream().mapToLong(Entry::getValue).sum();
-}
-
 public long getMempoolBalance() {
     return getChildren().stream()
             .filter(entry -> ((UtxoEntry)entry).getHashIndex().getHeight() <= 0)
@@ -117,34 +135,81 @@ public long getMempoolBalance() {
 }
 ```
 
-(`WalletUtxosEntry.java:90`)
+Add `getImmatureBalance()` alongside it, filtering the children on being an immature coinbase.
+`WalletForm` exposes both entries (`getWalletTransactionsEntry()` at `WalletForm.java:501`,
+`getWalletUtxosEntry()` at `:510`), so the transactions screen can read the figure from the
+UTXO entry without the sum being computed twice.
 
-So the precedent for "part of this balance is not like the rest" is established, and a third
-figure is a direct parallel: filter the children on being an immature coinbase, sum, and add a
-label to the FXML beside the other two.
+**The three figures do not overlap, and that is worth knowing before someone checks the
+arithmetic.** Mempool is `height <= 0`; an immature coinbase requires `height > 0`, because
+`CoinbaseTxoFilter` refuses anything without a height. The sets are disjoint, so nothing is
+counted twice and immature is always a subset of the confirmed balance.
 
-Show it **only when non-zero**. Every wallet that is not mining would otherwise carry a
-permanent zero row explaining a rule that will never apply to it.
+**The balance itself does not change.** It stays the total, because the coins are the owner's.
+The new line says how much of that total cannot move yet. This is deliberately not the bigger
+move — redefining the headline as spendable-only — which would change behaviour for every
+wallet rather than only mining ones, and is a separate decision.
 
-Wording: "Immature" is the term Bitcoin Core uses and the one a miner will have seen. Pair it
-with the unlock height in the adjacent status text rather than in the label.
+Show it **only when non-zero**, or every non-mining wallet carries a permanent zero row
+explaining a rule that will never apply to it.
+
+Wording: "Immature" is what Bitcoin Core calls it and what a miner will have seen. Keep the
+unlock height out of the label. During the window every coin mined in it unlocks at the same
+height, so one height would usually be right — but coins mined near the end of the window
+unlock later, on the ordinary hundred-block rule, so a single height in a summary line is not
+always true. The per-coin detail belongs on the per-coin row.
 
 **Testable:** yes, the sum is a pure function of the children.
 
 ### 3. Say when, where the eye already goes
 
-Two places, in order of value:
-
 **The UTXOs screen date/status column.** `DateCell.java:39` already writes
 "Unconfirmed (Not yet spendable)" for a mempool output, so the column is understood to carry
-spendability. Extend it for an immature coinbase: the height is the fact, so
-`Immature — spendable at block 979,920`.
+spendability rather than only a date. Extend it for an immature coinbase, carrying both the
+guess and the fact:
 
-**The tooltip**, which can afford more words than a column: the count, the reason, the unlock
-height, and — if we decide to estimate — the rough wait.
+```
+Immature — about 4 weeks (block 979,920)
+```
 
-Keep the Transactions screen wording (`ConfirmationsDescription`) and this consistent. They
-should not describe the same coin two ways.
+That is longer than what the column holds today. Check it is not truncated before calling this
+done; if it is, the height moves to the tooltip and the duration stays, since the duration is
+the question being asked.
+
+**The tooltip** can afford a sentence, and should name the cause rather than only the effect —
+this is a network rule, not something Sparrow decided.
+
+Keep this and the Transactions screen wording (`ConfirmationsDescription`) consistent. They
+describe the same coin and should not describe it two ways.
+
+#### The estimate
+
+Blocks remaining is exact: `spendableFromHeight - (tip + 1)`. Turning it into a duration needs
+an assumed interval, and the choice matters less than being honest about it.
+
+**Use the ten-minute target, not a measured rate.** It is stable, documented, and the same
+number the rest of Bitcoin quotes. A measured rate is more accurate and much more code, and it
+makes the figure move around for reasons the user cannot see. The target also errs in the safer
+direction: this chain has been running faster than ten minutes, so an estimate built on the
+target reads long, and a lock that opens earlier than promised is the failure nobody complains
+about.
+
+**Round hard.** The precision is fake, so it should not look real. Something like:
+
+| Blocks remaining | Reads as |
+|---|---|
+| > 10 weeks | about N months |
+| > 2 weeks | about N weeks |
+| > 3 days | about N days |
+| > 6 hours | about N hours |
+| anything less | less than an hour |
+
+Always prefixed "about". Never a date, never a decimal: "about 4 weeks" is useful and honest,
+"44.7 days" and "2 November" are neither, because both imply we know when a block will be found.
+
+**Testable:** yes, entirely, and it should be — a bucketing function with an off-by-one at a
+boundary is exactly the sort of thing that reads fine and is wrong. Put it beside
+`ConfirmationsDescription` as another pure function of its inputs.
 
 ### 4. Tell the Send screen the real reason
 
@@ -207,7 +272,8 @@ desktop — but it should not be forgotten, and whoever does section 3 should ch
 2. **Section 1** (`isSpendable`). Everything else leans on it, and it alone fixes the worst of
    the problem: a coin that looks spendable and is not.
 3. **Section 3** (say when). Small, once 1 is in.
-4. **Section 2** (immature balance). Needs FXML work and a decision on the label.
+4. **Section 2** (immature balance). FXML on two screens, one sum. The label is settled; what
+   is not is whether the row fits beside the two it joins.
 5. **Section 4** (Send message). Most valuable to a user, most fiddly, benefits from the rest
    being settled first.
 6. **Section 6** (terminal).
@@ -220,31 +286,39 @@ the hundred-block rule too; that rule was simply short enough that nobody minded
 Everything visual. There is no display on the build machine, so this splits cleanly:
 
 - **Testable headless:** the `isSpendable` predicate, the immature balance sum, the wording
-  functions, the filter.
-- **Needs eyes:** that the `unspendable` style actually reads as "different" rather than
-  "disabled"; that the new balance row does not crowd the two beside it; that the status column
-  is not truncated by the unlock height; that selection behaves when a mixed set is selected.
+  functions including the duration buckets, the filter.
+- **Needs eyes:** that the `unspendable` style reads as "different" rather than "disabled";
+  that a third balance row fits both screens without crowding; that the status column holds
+  "Immature — about 4 weeks (block 979,920)" without truncating; that selection behaves when a
+  mixed set is selected.
 
 Follow the pattern already used for the wording: put the decision in a pure function with
 tests, and let the untestable part be only the plumbing.
 
-## Open decisions
+## Decisions taken
 
-**Do we estimate a wait in human terms?** "About 45 days" is what a person wants. It is also
-wrong whenever the chain's block rate is not ten minutes, which on this chain is most of the
-time. Options: heights only; a deliberately coarse estimate ("about six weeks"); or an estimate
-derived from recent block times, which is more honest and more code. My inclination is heights
-plus a coarse estimate, with the estimate clearly hedged.
+**Heights and a coarse estimate, not one or the other.** The height is verifiable and the
+duration is what the user actually asked. Show both, built on the ten-minute target rather than
+a measured rate, rounded hard enough that nobody mistakes it for a promise. Section 3 has the
+buckets.
 
-**Does the headline wallet balance change?** This document proposes adding an immature figure to
-the UTXOs screen only, leaving the main balance as the total. The alternative — showing the
-headline balance as spendable-only — is arguably more honest and is a much bigger change in
-behaviour that would affect every wallet, not just mining ones. Deliberately not proposed here.
+**The immature figure goes under the headline balance, on both screens, and the balance itself
+does not change.** The coins are the owner's, so the total stays the total; the new line says
+how much of it cannot move yet. Confining the figure to the UTXOs screen would only reach
+someone already looking for it. Redefining the headline as spendable-only remains a separate
+and much larger decision, not taken here, because it would change what every wallet shows
+rather than only mining ones.
 
-**A new `Status` value?** `Status` (`drongo/.../wallet/Status.java`) has exactly one member,
-`FROZEN`, and it is user-set and persisted. Maturity is derived, not stored, so it should *not*
-become a `Status` — but the two want to look similar on screen. Worth being explicit about that
-distinction when implementing section 1, so a future reader does not try to unify them.
+**Maturity is derived and must never become a `Status`.** They will look alike on screen and
+must stay apart in the model, for the reasons in section 1. Say so in a comment where it would
+be tempting to unify them.
+
+## Still open
+
+**Nothing blocking.** The one genuinely unresolved question is the column width in section 3 —
+whether "Immature — about 4 weeks (block 979,920)" fits the UTXOs date column or has to be
+split between the cell and its tooltip. That needs a display, so it is a question for whoever
+implements it rather than one to settle on paper.
 
 ## What not to do
 
