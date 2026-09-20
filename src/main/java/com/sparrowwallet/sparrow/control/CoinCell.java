@@ -4,6 +4,7 @@ import com.sparrowwallet.drongo.BitcoinUnit;
 import com.sparrowwallet.drongo.OsType;
 import com.sparrowwallet.drongo.protocol.Transaction;
 import com.sparrowwallet.drongo.wallet.BlockTransactionHash;
+import com.sparrowwallet.sparrow.AppServices;
 import com.sparrowwallet.sparrow.UnitFormat;
 import com.sparrowwallet.sparrow.io.Config;
 import com.sparrowwallet.sparrow.wallet.Entry;
@@ -76,7 +77,8 @@ class CoinCell extends TreeTableCell<Entry, Number> implements ConfirmationsList
             }
 
             if(entry instanceof TransactionEntry transactionEntry) {
-                tooltip.showConfirmations(transactionEntry.confirmationsProperty(), transactionEntry.isCoinbase());
+                tooltip.showConfirmations(transactionEntry.confirmationsProperty(), transactionEntry.isCoinbase(),
+                        transactionEntry.getBlockTransaction() == null ? 0 : transactionEntry.getBlockTransaction().getHeight());
 
                 if(transactionEntry.isConfirming()) {
                     ConfirmationProgressIndicator arc = new ConfirmationProgressIndicator(transactionEntry.getConfirmations());
@@ -128,6 +130,7 @@ class CoinCell extends TreeTableCell<Entry, Number> implements ConfirmationsList
         private final IntegerProperty confirmationsProperty = new SimpleIntegerProperty();
         private boolean showConfirmations;
         private boolean isCoinbase;
+        private int coinbaseHeight;
         private String value;
 
         public void setValue(String value) {
@@ -135,9 +138,10 @@ class CoinCell extends TreeTableCell<Entry, Number> implements ConfirmationsList
             setTooltipText();
         }
 
-        public void showConfirmations(IntegerProperty txEntryConfirmationsProperty, boolean coinbase) {
+        public void showConfirmations(IntegerProperty txEntryConfirmationsProperty, boolean coinbase, int height) {
             showConfirmations = true;
             isCoinbase = coinbase;
+            coinbaseHeight = coinbase ? height : 0;
 
             int confirmations = txEntryConfirmationsProperty.get();
             if(confirmations < BlockTransactionHash.BLOCKS_TO_FULLY_CONFIRM) {
@@ -159,6 +163,7 @@ class CoinCell extends TreeTableCell<Entry, Number> implements ConfirmationsList
         public void hideConfirmations() {
             showConfirmations = false;
             isCoinbase = false;
+            coinbaseHeight = 0;
             confirmationsProperty.unbind();
 
             setTooltipText();
@@ -169,14 +174,10 @@ class CoinCell extends TreeTableCell<Entry, Number> implements ConfirmationsList
         }
 
         public String getConfirmationsDescription() {
-            int confirmations = confirmationsProperty.get();
-            if(confirmations == 0) {
-                return "Unconfirmed in mempool";
-            } else if(confirmations < BlockTransactionHash.BLOCKS_TO_FULLY_CONFIRM) {
-                return confirmations + " confirmation" + (confirmations == 1 ? "" : "s") + (isCoinbase ? ", immature coinbase" : "");
-            } else {
-                return BlockTransactionHash.BLOCKS_TO_FULLY_CONFIRM + "+ confirmations";
-            }
+            //The tip is read here rather than held, so a coin that matures while the tooltip exists says so
+            //the next time it is drawn
+            return ConfirmationsDescription.get(confirmationsProperty.get(), isCoinbase, coinbaseHeight,
+                    AppServices.getCurrentBlockHeight());
         }
     }
 
