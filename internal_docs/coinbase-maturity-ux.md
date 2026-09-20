@@ -28,7 +28,7 @@ Already done, tested, on `main` (unpushed):
 
 - `LongCoinbaseMaturity` — the rule, per network, with the Knots expression transcribed in its
   test.
-- `CoinbaseTxoFilter` asks it, so frozen coins are excluded from `getSpendableUtxos()` and
+- `CoinbaseTxoFilter` asks it, so immature coins are excluded from `getSpendableUtxos()` and
   cannot be selected into a transaction.
 - `ConfirmationsDescription` — the amount tooltip on the **Transactions** screen says
   "immature coinbase, spendable from block 979920".
@@ -66,8 +66,21 @@ selectable.
 
 ### 1. Make the UI's notion of spendable know about maturity
 
-**The single highest-leverage change.** Everything in section 2 and most of section 3 follows
-from it for free.
+**The single highest-leverage change**, and the one that gives the rest of this document
+something to call.
+
+Sections 2, 3 and 4 all need to ask the same question — *is this particular coin an immature
+coinbase* — and none of them can ask `isSpendable()`, because that is also false for a frozen
+coin and for an unconfirmed one, and those need different wording and must not be counted in an
+immature total. So introduce the question once, as a method on `HashIndexEntry` beside
+`isSpendable()`:
+
+```java
+public boolean isImmatureCoinbase()
+```
+
+`isSpendable()` then calls it, and sections 2, 3 and 4 call it directly. One definition, and
+section 1 stops being merely a fix and becomes the thing the others are built on.
 
 `HashIndexEntry.isSpendable()` (`src/main/java/com/sparrowwallet/sparrow/wallet/HashIndexEntry.java:63`)
 is the UI's answer to "can this coin be spent". Today:
@@ -93,12 +106,19 @@ What this buys, with no further work:
 |---|---|
 | `EntryCell.java:876` | Row gets the `unspendable` style, already defined at `wallet.css:59` |
 | `UtxosController.java:166` | Coin cannot be selected for spending on the UTXOs screen |
-| `EntryCell.java:186, 222, 391, 460, 801` | Dropped from the spend and send context menus |
-| `DateCell.java:39` | Already distinguishes "(Spendable)" from "(Not yet spendable)" |
+| `EntryCell.java:186, 391, 460, 801` | Dropped from the spend and send context menus |
 
-**Testable without a display?** Partly. The predicate itself is testable the way
-`CoinbaseTxoFilterTest` is — build a wallet holding a coinbase, assert the entry. The CSS and
-the table behaviour are not; they need eyes.
+Two call sites that look like they belong in that table and do not. `EntryCell.java:222` filters
+`Type.INPUT && isSpendable()`, and `isSpendable()` begins `!isSpent()` while `isSpent()` is true
+for every `INPUT` (`HashIndexEntry.java:59`), so that filter has never matched anything and
+nothing about it changes. `DateCell.java:39` sits inside the `height <= 0` branch, so it is
+unreachable for a confirmed coinbase; section 3 covers what that means for the wording.
+
+**Testable without a display?** Partly. Both predicates are testable the way
+`CoinbaseTxoFilterTest` is — build a wallet holding a coinbase, assert the entry — and
+`isImmatureCoinbase()` is worth testing in its own right rather than only through
+`isSpendable()`, because three other sections depend on it meaning exactly what it says. The CSS
+and the table behaviour are not testable here; they need eyes.
 
 **Watch for:** `isSpendable()` is called per cell per repaint. `getWalletTransaction()` is a map
 lookup and the tip is a field read, so this should be cheap, but it is worth confirming on a
@@ -135,7 +155,10 @@ public long getMempoolBalance() {
 }
 ```
 
-Add `getImmatureBalance()` alongside it, filtering the children on being an immature coinbase.
+Add `getImmatureBalance()` alongside it, filtering the children on `isImmatureCoinbase()` from
+section 1. Not on `!isSpendable()`: that is also true of a frozen coin and an unconfirmed one,
+and neither belongs in this total.
+
 `WalletForm` exposes both entries (`getWalletTransactionsEntry()` at `WalletForm.java:501`,
 `getWalletUtxosEntry()` at `:510`), so the transactions screen can read the figure from the
 UTXO entry without the sum being computed twice.
@@ -164,9 +187,11 @@ always true. The per-coin detail belongs on the per-coin row.
 ### 3. Say when, where the eye already goes
 
 **The UTXOs screen date/status column.** `DateCell.java:39` already writes
-"Unconfirmed (Not yet spendable)" for a mempool output, so the column is understood to carry
-spendability rather than only a date. Extend it for an immature coinbase, carrying both the
-guess and the fact:
+"Unconfirmed (Not yet spendable)", so the column is understood to carry spendability rather
+than only a date — but that line is inside the `height <= 0` branch and a confirmed coinbase
+never reaches it. A confirmed coin falls to the `else if` that prints the date
+(`DateCell.java:41`), and that is where the new case goes: a branch before it, on
+`isImmatureCoinbase()`, carrying both the guess and the fact.
 
 ```
 Immature — about 4 weeks (block 979,920)
@@ -176,8 +201,10 @@ That is longer than what the column holds today. Check it is not truncated befor
 done; if it is, the height moves to the tooltip and the duration stays, since the duration is
 the question being asked.
 
-**The tooltip** can afford a sentence, and should name the cause rather than only the effect —
-this is a network rule, not something Sparrow decided.
+**The tooltip is already there and already about height.** `DateCell` builds one at
+`DateCell.java:50` showing the block height, or "Mempool" (`:53`). Extending that is a smaller change
+than adding a tooltip, and it is where a sentence fits: name the cause rather than only the
+effect, because this is a network rule and not something Sparrow decided.
 
 Keep this and the Transactions screen wording (`ConfirmationsDescription`) consistent. They
 describe the same coin and should not describe it two ways.
@@ -217,12 +244,22 @@ Today an attempt to spend a wallet whose coins are all immature produces
 `InsufficientFundsException`, surfaced near `SendController.java:651`, and the validation label
 at `:500` says "Insufficient Inputs". Both are true and neither is the answer.
 
-The cheapest honest improvement: when a transaction cannot be funded, check whether the wallet
-holds immature coinbases that would have covered it, and if so say so — "Insufficient spendable
-funds: N BTC is immature until block 979,920" — rather than implying the money is not there.
+The cheapest honest improvement: when a transaction cannot be funded, ask
+`getImmatureBalance()` from section 2 whether the wallet holds enough immature coinbase to have
+covered it, and if so say that instead of implying the money is not there.
+
+Do not put a single unlock height in this message. It is a summary of possibly several coins,
+and for the same reason section 2 keeps the height off the balance label — coins mined near the
+end of the window unlock later, on the ordinary hundred-block rule — one height would sometimes
+be wrong. Name the amount and send the reader to the coins:
+
+```
+Insufficient spendable funds — 6.25 BTC is immature. See the UTXOs tab.
+```
 
 This is the change most likely to stop a support message being written, and it is the one a
-miner hits first.
+miner hits first. It is also the one with the least existing structure to lean on, which is why
+it is last in the order below rather than first.
 
 ### 5. Close the fail-open in `CoinbaseTxoFilter`
 
@@ -243,7 +280,7 @@ it: a wallet cannot hold a txo whose transaction it failed to fetch, because `El
 throws `IllegalStateException` rather than admitting one (`ElectrumServer.java:2053` and
 `:2070`). It is a real invariant, and the filter's safety depends on it. If it ever softens —
 and a longer maturity window makes a restore against a pruned node more likely to be the case
-that softens it — this filter silently starts offering frozen coins.
+that softens it — this filter silently starts offering immature coins for spending.
 
 Do not simply invert it. Failing closed on every unknown would make an ordinary wallet
 unspendable the moment a transaction is missing. Split by what is actually known:
@@ -285,8 +322,8 @@ the hundred-block rule too; that rule was simply short enough that nobody minded
 
 Everything visual. There is no display on the build machine, so this splits cleanly:
 
-- **Testable headless:** the `isSpendable` predicate, the immature balance sum, the wording
-  functions including the duration buckets, the filter.
+- **Testable headless:** the `isImmatureCoinbase()` and `isSpendable()` predicates, the
+  immature balance sum, the wording functions including the duration buckets, the filter.
 - **Needs eyes:** that the `unspendable` style reads as "different" rather than "disabled";
   that a third balance row fits both screens without crowding; that the status column holds
   "Immature — about 4 weeks (block 979,920)" without truncating; that selection behaves when a
