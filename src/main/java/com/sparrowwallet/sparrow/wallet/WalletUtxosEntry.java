@@ -94,4 +94,18 @@ public class WalletUtxosEntry extends Entry {
     public long getMempoolBalance() {
         return getChildren().stream().filter(entry -> ((UtxoEntry)entry).getHashIndex().getHeight() <= 0).mapToLong(Entry::getValue).sum();
     }
+
+    /**
+     * How much of the balance is mined coin the network will not yet accept a spend of.
+     *
+     * <p>Filtered on {@code isImmatureCoinbase()} rather than on {@code !isSpendable()}, because the latter
+     * is also true of a frozen coin and an unconfirmed one and neither belongs in this total.
+     *
+     * <p>This does not overlap the mempool figure: that one is {@code height <= 0}, and an immature coinbase
+     * requires a height. So the three figures are disjoint, nothing is counted twice, and immature is always
+     * a subset of the confirmed balance.
+     */
+    public long getImmatureBalance() {
+        return getChildren().stream().filter(entry -> ((UtxoEntry)entry).isImmatureCoinbase()).mapToLong(Entry::getValue).sum();
+    }
 }

@@ -55,6 +55,8 @@ public class ConfirmationsDescriptionTest {
         assertTrue(description.contains("spendable from block " + RELEASE), description);
         assertTrue(description.startsWith("500 confirmations"), description);
         assertFalse(description.contains(BlockTransactionHash.BLOCKS_TO_FULLY_CONFIRM + "+ confirmations"), description);
+        //And the coarse duration, in the same words the UTXOs screen uses
+        assertTrue(description.contains("(" + MaturityEstimate.describe(RELEASE - (START + 500 + 1)) + ")"), description);
     }
 
     /** And stops saying it the moment the coin is actually spendable. */
@@ -74,8 +76,9 @@ public class ConfirmationsDescriptionTest {
         Network.set(Network.MAINNET);
         int coinbaseHeight = START - 5000;
         String description = ConfirmationsDescription.get(3, true, coinbaseHeight, coinbaseHeight + 2);
-        assertEquals("3 confirmations, immature coinbase, spendable from block "
-                + (coinbaseHeight + RELEASE - START), description);
+        int spendableFrom = coinbaseHeight + RELEASE - START;
+        assertEquals("3 confirmations, immature coinbase, spendable from block " + spendableFrom
+                + " (" + MaturityEstimate.describe(spendableFrom - (coinbaseHeight + 2 + 1)) + ")", description);
     }
 
     /** Where the rule is not deployed, the short wording stands, because sixteen hours needs no height. */

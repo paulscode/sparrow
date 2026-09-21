@@ -1,5 +1,7 @@
 package com.sparrowwallet.sparrow.control;
 
+import com.sparrowwallet.drongo.Network;
+import com.sparrowwallet.drongo.protocol.LongCoinbaseMaturity;
 import com.sparrowwallet.sparrow.wallet.Entry;
 import com.sparrowwallet.sparrow.wallet.UtxoEntry;
 import javafx.geometry.Pos;
@@ -38,6 +40,14 @@ public class DateCell extends TreeTableCell<Entry, Entry> {
                 if(utxoEntry.getHashIndex().getHeight() <= 0) {
                     setText("Unconfirmed " + (utxoEntry.getHashIndex().getHeight() < 0 ? "Parent " : "") + (utxoEntry.getWallet().isWhirlpoolMixWallet() ? "(Not yet mixable)" : (utxoEntry.isSpendable() ? "(Spendable)" : "(Not yet spendable)")));
                     setContextMenu(new HashIndexEntryContextMenu(getTreeTableView(), utxoEntry));
+                } else if(utxoEntry.isImmatureCoinbase()) {
+                    //Ahead of the date branch, which a confirmed coinbase would otherwise fall to, showing a
+                    //date and nothing about the coin being unspendable. The duration rather than the unlock
+                    //height goes in the cell, because the duration is the question being asked and the cell
+                    //is narrow; the height is a fact the tooltip can hold without crowding anything.
+                    setText("Immature (" + MaturityEstimate.describe(utxoEntry.getBlocksUntilMature()) + ")");
+                    setContextMenu(utxoEntry.getHashIndex().getDate() == null ? null
+                            : new DateContextMenu(getTreeTableView(), utxoEntry, DATE_FORMAT.format(utxoEntry.getHashIndex().getDate())));
                 } else if(utxoEntry.getHashIndex().getDate() != null) {
                     String date = DATE_FORMAT.format(utxoEntry.getHashIndex().getDate());
                     setText(date);
@@ -50,7 +60,15 @@ public class DateCell extends TreeTableCell<Entry, Entry> {
                 Tooltip tooltip = new Tooltip();
                 tooltip.setShowDelay(Duration.millis(250));
                 int height = utxoEntry.getHashIndex().getHeight();
-                tooltip.setText(height > 0 ? Integer.toString(height) : "Mempool");
+                if(utxoEntry.isImmatureCoinbase()) {
+                    //Names the cause as well as the effect, because this is a network rule and not something
+                    //Sparrow decided, and a user told only "immature" has nowhere to go with it.
+                    tooltip.setText(height + "\nImmature coinbase, spendable from block " + utxoEntry.getSpendableFromHeight()
+                            + "\nMined coins must be " + LongCoinbaseMaturity.maturityDepth(Network.get())
+                            + " blocks deep before the network will relay a spend of them.");
+                } else {
+                    tooltip.setText(height > 0 ? Integer.toString(height) : "Mempool");
+                }
                 setTooltip(tooltip);
             }
             setGraphic(null);

@@ -1,6 +1,7 @@
 package com.sparrowwallet.sparrow.terminal.wallet.table;
 
 import com.sparrowwallet.drongo.wallet.Status;
+import com.sparrowwallet.sparrow.control.MaturityEstimate;
 import com.sparrowwallet.sparrow.wallet.Entry;
 import com.sparrowwallet.sparrow.wallet.TransactionEntry;
 import com.sparrowwallet.sparrow.wallet.UtxoEntry;
@@ -46,6 +47,13 @@ public class DateTableCell extends TableCell {
                 return "Unconfirmed Parent";
             } else if(utxoEntry.getBlockTransaction().getHeight() == 0) {
                 return "Unconfirmed";
+            } else if(utxoEntry.isImmatureCoinbase()) {
+                //Ahead of the date, which would otherwise be all this column said about a coin that cannot
+                //be spent. The short form of the estimate, because this column is a fixed eighteen
+                //characters and widening it would push the UTXO table past an eighty column terminal. If
+                //even the short form does not fit, the duration goes rather than the fact.
+                String immature = "Immature " + MaturityEstimate.describeShort(utxoEntry.getBlocksUntilMature());
+                return immature.length() <= UTXO_WIDTH ? immature : "Immature";
             } else {
                 return DATE_FORMAT.format(utxoEntry.getBlockTransaction().getDate());
             }

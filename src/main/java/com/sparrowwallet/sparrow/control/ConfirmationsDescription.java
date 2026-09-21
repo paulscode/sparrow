@@ -39,11 +39,13 @@ public final class ConfirmationsDescription {
         //the count it replaces, so it falls through to the wording below.
         if(isCoinbase && coinbaseHeight > 0 && currentBlockHeight != null
                 && LongCoinbaseMaturity.isFrozenByLongRule(Network.get(), coinbaseHeight, currentBlockHeight)) {
-            //Said as a height rather than as a wait, because a wait is only as good as an assumed block
-            //interval and this chain's has not been near ten minutes
+            //Both the height and a coarse duration: the height is the verifiable fact and the duration is
+            //what the reader actually asked. Same vocabulary as the UTXOs screen status column, because the
+            //two describe the same coin and should not describe it two ways.
+            int spendableFrom = LongCoinbaseMaturity.spendableFromHeight(Network.get(), coinbaseHeight);
             return confirmations + " confirmation" + (confirmations == 1 ? "" : "s")
-                    + ", immature coinbase, spendable from block "
-                    + LongCoinbaseMaturity.spendableFromHeight(Network.get(), coinbaseHeight);
+                    + ", immature coinbase, spendable from block " + spendableFrom
+                    + " (" + MaturityEstimate.describe(spendableFrom - (currentBlockHeight + 1)) + ")";
         }
 
         if(confirmations < BlockTransactionHash.BLOCKS_TO_FULLY_CONFIRM) {

@@ -2,6 +2,7 @@ package com.sparrowwallet.sparrow.wallet;
 
 import com.google.common.eventbus.Subscribe;
 import com.sparrowwallet.drongo.BitcoinUnit;
+import com.sparrowwallet.sparrow.control.InsufficientInputsDescription;
 import com.sparrowwallet.drongo.KeyPurpose;
 import com.sparrowwallet.drongo.Network;
 import com.sparrowwallet.drongo.SecureString;
@@ -489,6 +490,26 @@ public class SendController extends WalletFormController implements Initializabl
         return unit;
     }
 
+
+    /**
+     * Names the immature balance when there is one, rather than letting "Insufficient Inputs" imply the
+     * money is not there. See {@link InsufficientInputsDescription}.
+     */
+    private String getInsufficientInputsMessage() {
+        long immatureBalance = getWalletForm().getWalletUtxosEntry().getImmatureBalance();
+        if(immatureBalance <= 0) {
+            return InsufficientInputsDescription.get(null);
+        }
+
+        UnitFormat format = Config.get().getUnitFormat() == null ? UnitFormat.DOT : Config.get().getUnitFormat();
+        BitcoinUnit unit = getBitcoinUnit(Config.get().getBitcoinUnit());
+        String amount = BitcoinUnit.BTC.equals(unit)
+                ? format.formatBtcValue(immatureBalance) + " BTC"
+                : format.formatSatsValue(immatureBalance) + " sats";
+
+        return InsufficientInputsDescription.get(amount);
+    }
+
     public ValidationSupport getValidationSupport() {
         return validationSupport;
     }
@@ -497,7 +518,7 @@ public class SendController extends WalletFormController implements Initializabl
         validationSupport = new ValidationSupport();
         validationSupport.setValidationDecorator(new StyleClassValidationDecoration());
         validationSupport.registerValidator(fee, Validator.combine(
-                (Control c, String newValue) -> ValidationResult.fromErrorIf( c, "Insufficient Inputs", userFeeSet.get() && insufficientInputsProperty.get()),
+                (Control c, String newValue) -> ValidationResult.fromErrorIf( c, getInsufficientInputsMessage(), userFeeSet.get() && insufficientInputsProperty.get()),
                 (Control c, String newValue) -> ValidationResult.fromErrorIf( c, "Insufficient Fee Rate", isInsufficientFeeRate())
         ));
 

@@ -18,6 +18,7 @@ import javafx.application.Platform;
 import javafx.collections.ListChangeListener;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
+import tornadofx.control.Field;
 import javafx.fxml.Initializable;
 import javafx.scene.control.Button;
 import javafx.scene.control.Tooltip;
@@ -52,6 +53,15 @@ public class UtxosController extends WalletFormController implements Initializab
     private FiatLabel fiatMempoolBalance;
 
     @FXML
+    private Field immatureBalanceField;
+
+    @FXML
+    private CopyableCoinLabel immatureBalance;
+
+    @FXML
+    private FiatLabel fiatImmatureBalance;
+
+    @FXML
     private CopyableLabel utxoCount;
 
     @FXML
@@ -82,6 +92,9 @@ public class UtxosController extends WalletFormController implements Initializab
         mempoolBalance.valueProperty().addListener((observable, oldValue, newValue) -> {
             setFiatBalance(fiatMempoolBalance, AppServices.getFiatCurrencyExchangeRate(), newValue.longValue());
         });
+        immatureBalance.valueProperty().addListener((observable, oldValue, newValue) -> {
+            setFiatBalance(fiatImmatureBalance, AppServices.getFiatCurrencyExchangeRate(), newValue.longValue());
+        });
 
         WalletUtxosEntry walletUtxosEntry = getWalletForm().getWalletUtxosEntry();
         updateFields(walletUtxosEntry);
@@ -103,6 +116,7 @@ public class UtxosController extends WalletFormController implements Initializab
     private void updateFields(WalletUtxosEntry walletUtxosEntry) {
         balance.setValue(walletUtxosEntry.getBalance());
         mempoolBalance.setValue(walletUtxosEntry.getMempoolBalance());
+        setImmatureBalance(walletUtxosEntry.getImmatureBalance());
         updateUtxoCount(walletUtxosEntry);
         selectAll.setDisable(walletUtxosEntry.getChildren() == null || walletUtxosEntry.getChildren().size() == 0);
     }
@@ -269,9 +283,11 @@ public class UtxosController extends WalletFormController implements Initializab
         utxosChart.setUnitFormat(getWalletForm().getWallet(), event.getUnitFormat(), event.getBitcoinUnit());
         balance.refresh(event.getUnitFormat(), event.getBitcoinUnit());
         mempoolBalance.refresh(event.getUnitFormat(), event.getBitcoinUnit());
+        immatureBalance.refresh(event.getUnitFormat(), event.getBitcoinUnit());
         updateButtons(event.getUnitFormat(), event.getBitcoinUnit());
         fiatBalance.refresh(event.getUnitFormat());
         fiatMempoolBalance.refresh(event.getUnitFormat());
+        fiatImmatureBalance.refresh(event.getUnitFormat());
     }
 
     @Subscribe
@@ -282,8 +298,10 @@ public class UtxosController extends WalletFormController implements Initializab
         utxosChart.refreshTooltips();
         balance.refresh();
         mempoolBalance.refresh();
+        immatureBalance.refresh();
         fiatBalance.refresh();
         fiatMempoolBalance.refresh();
+        fiatImmatureBalance.refresh();
         updateButtons(Config.get().getUnitFormat(), Config.get().getBitcoinUnit());
     }
 
@@ -352,6 +370,8 @@ public class UtxosController extends WalletFormController implements Initializab
             fiatBalance.setBtcRate(0.0);
             fiatMempoolBalance.setCurrency(null);
             fiatMempoolBalance.setBtcRate(0.0);
+            fiatImmatureBalance.setCurrency(null);
+            fiatImmatureBalance.setBtcRate(0.0);
         }
     }
 
@@ -359,5 +379,22 @@ public class UtxosController extends WalletFormController implements Initializab
     public void exchangeRatesUpdated(ExchangeRatesUpdatedEvent event) {
         setFiatBalance(fiatBalance, event.getCurrencyRate(), getWalletForm().getWalletUtxosEntry().getBalance());
         setFiatBalance(fiatMempoolBalance, event.getCurrencyRate(), getWalletForm().getWalletUtxosEntry().getMempoolBalance());
+        setFiatBalance(fiatImmatureBalance, event.getCurrencyRate(), getWalletForm().getWalletUtxosEntry().getImmatureBalance());
     }
+
+    /**
+     * Shows how much of the balance is mined coin that cannot be spent yet, and hides the row entirely when
+     * there is none. Without the hiding, every non-mining wallet would carry a permanent zero row explaining
+     * a rule that will never apply to it.
+     *
+     * <p>The headline balance deliberately still counts these coins. They are the owner's; the new line says
+     * how much of the total cannot move yet. Redefining the headline as spendable-only would change what
+     * every wallet shows rather than only mining ones, and is a separate decision.
+     */
+    private void setImmatureBalance(long value) {
+        immatureBalance.setValue(value);
+        immatureBalanceField.setVisible(value > 0);
+        immatureBalanceField.setManaged(value > 0);
+    }
+
 }

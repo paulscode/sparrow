@@ -1,10 +1,13 @@
 package com.sparrowwallet.sparrow.wallet;
 
 import com.sparrowwallet.drongo.KeyPurpose;
+import com.sparrowwallet.drongo.Network;
+import com.sparrowwallet.drongo.protocol.LongCoinbaseMaturity;
 import com.sparrowwallet.drongo.wallet.BlockTransaction;
 import com.sparrowwallet.drongo.wallet.BlockTransactionHashIndex;
 import com.sparrowwallet.drongo.wallet.Status;
 import com.sparrowwallet.drongo.wallet.Wallet;
+import com.sparrowwallet.sparrow.AppServices;
 import com.sparrowwallet.sparrow.EventManager;
 import com.sparrowwallet.sparrow.control.DateLabel;
 import com.sparrowwallet.sparrow.event.WalletEntryLabelsChangedEvent;
@@ -61,7 +64,68 @@ public class HashIndexEntry extends Entry implements Comparable<HashIndexEntry> 
     }
 
     public boolean isSpendable() {
-        return !isSpent() && (hashIndex.getHeight() > 0 || Config.get().isIncludeMempoolOutputs()) && (hashIndex.getStatus() == null || hashIndex.getStatus() != Status.FROZEN);
+        return !isSpent() && (hashIndex.getHeight() > 0 || Config.get().isIncludeMempoolOutputs())
+                && (hashIndex.getStatus() == null || hashIndex.getStatus() != Status.FROZEN)
+                && !isImmatureCoinbase();
+    }
+
+    /**
+     * Is this a mined coin the network will not yet accept a spend of?
+     *
+     * <p>Asked separately from {@link #isSpendable()} rather than folded into it, because the callers that
+     * need it cannot use the wider question: {@code isSpendable()} is also false for a spent coin, a frozen
+     * one and an unconfirmed one, and those need different wording and must not be counted in an immature
+     * total.
+     *
+     * <p><b>This is not a {@link Status} and must never become one.</b> {@code Status} is set by the owner,
+     * persisted in the wallet file, and round-tripped through labels import and export. Maturity is none of
+     * those: it is derived from a height and a tip, and it changes on its own as blocks arrive. Writing it
+     * down would make it wrong the moment the chain moved. The two look alike on screen and must stay apart
+     * in the model, so resist the tidy-up that unifies them.
+     */
+    public boolean isImmatureCoinbase() {
+        if(isSpent() || hashIndex.getHeight() <= 0) {
+            return false;
+        }
+
+        BlockTransaction blockTransaction = getBlockTransaction();
+        if(blockTransaction == null || blockTransaction.getTransaction() == null
+                || !blockTransaction.getTransaction().isCoinBase()) {
+            return false;
+        }
+
+        Integer currentHeight = getCurrentBlockHeight();
+        if(currentHeight == null) {
+            //Nothing to measure depth against. CoinbaseTxoFilter refuses this case, but saying "immature"
+            //here would put a coin in the immature total on no evidence, so the interface stays quiet.
+            return false;
+        }
+
+        return !LongCoinbaseMaturity.isSpendable(Network.get(), hashIndex.getHeight(), currentHeight);
+    }
+
+    /**
+     * How many blocks until this coin can be spent, or zero if it already can be.
+     *
+     * <p>Exact, unlike any duration built from it: the rule is defined in heights.
+     */
+    public int getBlocksUntilMature() {
+        Integer currentHeight = getCurrentBlockHeight();
+        if(!isImmatureCoinbase() || currentHeight == null) {
+            return 0;
+        }
+
+        return Math.max(0, getSpendableFromHeight() - (currentHeight + 1));
+    }
+
+    /** The first block height at which this coin may be spent. Only meaningful for a coinbase. */
+    public int getSpendableFromHeight() {
+        return LongCoinbaseMaturity.spendableFromHeight(Network.get(), hashIndex.getHeight());
+    }
+
+    private Integer getCurrentBlockHeight() {
+        return AppServices.getCurrentBlockHeight() == null
+                ? getWallet().getStoredBlockHeight() : AppServices.getCurrentBlockHeight();
     }
 
     @Override
