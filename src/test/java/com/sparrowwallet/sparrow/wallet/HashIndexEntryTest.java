@@ -140,4 +140,31 @@ public class HashIndexEntryTest {
         assertEquals(START + LONG, entry(coinbaseTransaction(), START, START).getSpendableFromHeight());
         assertEquals(START + 1 + LONG, entry(coinbaseTransaction(), START + 1, START).getSpendableFromHeight());
     }
+
+    /**
+     * The static form, which is what both balance figures sum over. It must agree with the instance form,
+     * or the two screens can disagree about the same coin.
+     */
+    @Test
+    public void theStaticFormAgreesWithTheInstanceForm() {
+        Network.set(Network.MAINNET);
+        for(int[] c : new int[][]{{START, START + 100}, {START, START + LONG - 1}, {START - 5000, START - 4800}, {0, START}}) {
+            HashIndexEntry e = entry(coinbaseTransaction(), c[0], c[1]);
+            assertEquals(e.isImmatureCoinbase(),
+                    HashIndexEntry.isImmatureCoinbase(e.getWallet(), e.getHashIndex(), c[1]),
+                    "coinbase " + c[0] + " at tip " + c[1]);
+        }
+    }
+
+    /** A spent coin is not immature, whatever its depth: it is gone, not waiting. */
+    @Test
+    public void aSpentCoinIsNotImmature() {
+        Network.set(Network.MAINNET);
+        HashIndexEntry input = new HashIndexEntry(entry(coinbaseTransaction(), START, START).getWallet(),
+                entry(coinbaseTransaction(), START, START).getHashIndex(),
+                HashIndexEntry.Type.INPUT, KeyPurpose.RECEIVE);
+        assertTrue(input.isSpent());
+        assertFalse(input.isImmatureCoinbase());
+    }
+
 }

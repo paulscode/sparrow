@@ -7,6 +7,7 @@ import com.sparrowwallet.drongo.wallet.BlockTransaction;
 import com.sparrowwallet.drongo.wallet.BlockTransactionHashIndex;
 import com.sparrowwallet.drongo.wallet.Wallet;
 import com.sparrowwallet.drongo.wallet.WalletNode;
+import com.sparrowwallet.sparrow.AppServices;
 import com.sparrowwallet.sparrow.EventManager;
 import com.sparrowwallet.sparrow.event.NewWalletTransactionsEvent;
 import com.sparrowwallet.sparrow.io.Config;
@@ -215,6 +216,18 @@ public class WalletTransactionsEntry extends Entry {
 
     public final long getMempoolBalance() {
         return mempoolBalance == null ? 0L : mempoolBalance.get();
+    }
+
+    /**
+     * How much of the balance is mined coin that cannot be spent yet.
+     *
+     * <p>Computed here rather than read from {@link WalletUtxosEntry}, whose children are only refreshed by
+     * the UTXOs screen: a wallet whose owner never opens that tab would show a figure frozen at whenever
+     * that entry happened to be built. The definition is shared, not the cache.
+     */
+    public long getImmatureBalance() {
+        return HashIndexEntry.getImmatureBalance(getWallet(), AppServices.getCurrentBlockHeight() == null
+                ? getWallet().getStoredBlockHeight() : AppServices.getCurrentBlockHeight());
     }
 
     public final LongProperty mempoolBalanceProperty() {

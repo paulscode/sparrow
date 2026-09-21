@@ -3,6 +3,7 @@ package com.sparrowwallet.sparrow.wallet;
 import com.sparrowwallet.drongo.policy.PolicyType;
 import com.sparrowwallet.drongo.wallet.Wallet;
 import com.sparrowwallet.drongo.wallet.WalletNode;
+import com.sparrowwallet.sparrow.AppServices;
 import com.sparrowwallet.sparrow.io.Config;
 
 import java.util.*;
@@ -106,6 +107,7 @@ public class WalletUtxosEntry extends Entry {
      * a subset of the confirmed balance.
      */
     public long getImmatureBalance() {
-        return getChildren().stream().filter(entry -> ((UtxoEntry)entry).isImmatureCoinbase()).mapToLong(Entry::getValue).sum();
+        return HashIndexEntry.getImmatureBalance(getWallet(), AppServices.getCurrentBlockHeight() == null
+                ? getWallet().getStoredBlockHeight() : AppServices.getCurrentBlockHeight());
     }
 }

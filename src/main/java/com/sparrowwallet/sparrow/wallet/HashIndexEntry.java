@@ -84,24 +84,48 @@ public class HashIndexEntry extends Entry implements Comparable<HashIndexEntry> 
      * in the model, so resist the tidy-up that unifies them.
      */
     public boolean isImmatureCoinbase() {
-        if(isSpent() || hashIndex.getHeight() <= 0) {
+        return !isSpent() && isImmatureCoinbase(getWallet(), hashIndex, getCurrentBlockHeight());
+    }
+
+    /**
+     * The same question asked of a wallet and a txo directly, for callers that hold no entry.
+     *
+     * <p>The Transactions screen needs the immature total but must not read it off {@link WalletUtxosEntry},
+     * whose children are only refreshed by the UTXOs screen: a wallet whose owner never opens that tab would
+     * show a figure frozen at whenever the entry happened to be built. So the two screens each sum over the
+     * wallet's own UTXOs, and share this one definition rather than the cached entry.
+     */
+    public static boolean isImmatureCoinbase(Wallet wallet, BlockTransactionHashIndex hashIndex, Integer currentBlockHeight) {
+        if(hashIndex.getHeight() <= 0) {
             return false;
         }
 
-        BlockTransaction blockTransaction = getBlockTransaction();
+        BlockTransaction blockTransaction = wallet.getWalletTransaction(hashIndex.getHash());
         if(blockTransaction == null || blockTransaction.getTransaction() == null
                 || !blockTransaction.getTransaction().isCoinBase()) {
             return false;
         }
 
-        Integer currentHeight = getCurrentBlockHeight();
-        if(currentHeight == null) {
+        if(currentBlockHeight == null) {
             //Nothing to measure depth against. CoinbaseTxoFilter refuses this case, but saying "immature"
             //here would put a coin in the immature total on no evidence, so the interface stays quiet.
             return false;
         }
 
-        return !LongCoinbaseMaturity.isSpendable(Network.get(), hashIndex.getHeight(), currentHeight);
+        return !LongCoinbaseMaturity.isSpendable(Network.get(), hashIndex.getHeight(), currentBlockHeight);
+    }
+
+    /**
+     * Sums the immature coinbase value across a wallet's UTXOs, read fresh rather than from any cached entry.
+     *
+     * <p>Does not overlap the mempool figure: that one is {@code height <= 0}, and an immature coinbase
+     * requires a height. So the figures are disjoint and immature is always a subset of the confirmed
+     * balance.
+     */
+    public static long getImmatureBalance(Wallet wallet, Integer currentBlockHeight) {
+        return wallet.getWalletUtxos().keySet().stream()
+                .filter(hashIndex -> isImmatureCoinbase(wallet, hashIndex, currentBlockHeight))
+                .mapToLong(BlockTransactionHashIndex::getValue).sum();
     }
 
     /**

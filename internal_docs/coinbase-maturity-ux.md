@@ -356,6 +356,13 @@ fit. It cannot be measured without a display, so the build took the plan's own f
 `Immature (about 6 weeks)` and the tooltip carries the height, the unlock height, and a sentence naming the
 rule. If the cell turns out to have room, moving the height back is a one-line change.
 
+**Neither screen reads the figure from the cached UTXO entry.** The plan said the Transactions screen could
+read it from `WalletUtxosEntry`, so the sum would not be computed twice. That would have shipped a stale
+figure: `WalletUtxosEntry.updateUtxos()` is called only by `UtxosController` and the terminal's
+`UtxosDialog`, so a wallet whose owner never opens the UTXOs tab would have built that entry once and shown
+an immature total frozen at that moment. `HashIndexEntry.getImmatureBalance(wallet, tip)` is now a static
+that sums over the wallet's own UTXOs, and both screens call it. The definition is shared; the cache is not.
+
 **The Send message names the immature amount whenever there is one.** The plan asked whether the immature
 balance would have covered the shortfall, and to speak only if it would. Working the shortfall out at that
 point means unpicking the fee iteration, and the sentence is worth saying either way: the difference it

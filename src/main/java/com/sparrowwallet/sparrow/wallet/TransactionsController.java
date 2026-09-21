@@ -99,7 +99,7 @@ public class TransactionsController extends WalletFormController implements Init
             setFiatBalance(fiatImmatureBalance, AppServices.getFiatCurrencyExchangeRate(), newValue.longValue());
         });
         mempoolBalance.setValue(walletTransactionsEntry.getMempoolBalance());
-        setImmatureBalance(getWalletForm().getWalletUtxosEntry().getImmatureBalance());
+        setImmatureBalance(walletTransactionsEntry.getImmatureBalance());
         setTransactionCount(walletTransactionsEntry);
         balanceChart.initialize(walletTransactionsEntry);
 
@@ -168,7 +168,7 @@ public class TransactionsController extends WalletFormController implements Init
             transactionsTable.updateAll(walletTransactionsEntry);
             balance.setValue(walletTransactionsEntry.getBalance());
             mempoolBalance.setValue(walletTransactionsEntry.getMempoolBalance());
-            setImmatureBalance(getWalletForm().getWalletUtxosEntry().getImmatureBalance());
+            setImmatureBalance(walletTransactionsEntry.getImmatureBalance());
             balanceChart.update(walletTransactionsEntry);
             setTransactionCount(walletTransactionsEntry);
         }
@@ -185,7 +185,7 @@ public class TransactionsController extends WalletFormController implements Init
             transactionsTable.updateHistory();
             balance.setValue(walletTransactionsEntry.getBalance());
             mempoolBalance.setValue(walletTransactionsEntry.getMempoolBalance());
-            setImmatureBalance(getWalletForm().getWalletUtxosEntry().getImmatureBalance());
+            setImmatureBalance(walletTransactionsEntry.getImmatureBalance());
             balanceChart.update(walletTransactionsEntry);
             setTransactionCount(walletTransactionsEntry);
         }
@@ -249,7 +249,7 @@ public class TransactionsController extends WalletFormController implements Init
     public void exchangeRatesUpdated(ExchangeRatesUpdatedEvent event) {
         setFiatBalance(fiatBalance, event.getCurrencyRate(), getWalletForm().getWalletTransactionsEntry().getBalance());
         setFiatBalance(fiatMempoolBalance, event.getCurrencyRate(), getWalletForm().getWalletTransactionsEntry().getMempoolBalance());
-        setFiatBalance(fiatImmatureBalance, event.getCurrencyRate(), getWalletForm().getWalletUtxosEntry().getImmatureBalance());
+        setFiatBalance(fiatImmatureBalance, event.getCurrencyRate(), getWalletForm().getWalletTransactionsEntry().getImmatureBalance());
     }
 
     @Subscribe
