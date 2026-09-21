@@ -3,7 +3,6 @@ package com.sparrowwallet.sparrow.wallet;
 import com.sparrowwallet.drongo.policy.PolicyType;
 import com.sparrowwallet.drongo.wallet.Wallet;
 import com.sparrowwallet.drongo.wallet.WalletNode;
-import com.sparrowwallet.sparrow.AppServices;
 import com.sparrowwallet.sparrow.io.Config;
 
 import java.util.*;
@@ -99,15 +98,12 @@ public class WalletUtxosEntry extends Entry {
     /**
      * How much of the balance is mined coin the network will not yet accept a spend of.
      *
-     * <p>Filtered on {@code isImmatureCoinbase()} rather than on {@code !isSpendable()}, because the latter
-     * is also true of a frozen coin and an unconfirmed one and neither belongs in this total.
-     *
-     * <p>This does not overlap the mempool figure: that one is {@code height <= 0}, and an immature coinbase
-     * requires a height. So the three figures are disjoint, nothing is counted twice, and immature is always
-     * a subset of the confirmed balance.
+     * <p>Read from the wallet rather than from this entry's children, which are only refreshed when the
+     * UTXOs screen asks. It does not overlap the mempool figure: that one is {@code height <= 0} and an
+     * immature coinbase requires a height, so the three figures are disjoint and immature is always a
+     * subset of the confirmed balance.
      */
     public long getImmatureBalance() {
-        return HashIndexEntry.getImmatureBalance(getWallet(), AppServices.getCurrentBlockHeight() == null
-                ? getWallet().getStoredBlockHeight() : AppServices.getCurrentBlockHeight());
+        return HashIndexEntry.getImmatureBalance(getWallet());
     }
 }

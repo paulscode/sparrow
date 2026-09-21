@@ -10,6 +10,7 @@ import com.sparrowwallet.drongo.protocol.Sha256Hash;
 import com.sparrowwallet.drongo.protocol.Transaction;
 import com.sparrowwallet.drongo.wallet.BlockTransaction;
 import com.sparrowwallet.drongo.wallet.BlockTransactionHashIndex;
+import com.sparrowwallet.drongo.wallet.CoinbaseTxoFilter;
 import com.sparrowwallet.drongo.wallet.Wallet;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -165,6 +166,51 @@ public class HashIndexEntryTest {
                 HashIndexEntry.Type.INPUT, KeyPurpose.RECEIVE);
         assertTrue(input.isSpent());
         assertFalse(input.isImmatureCoinbase());
+    }
+
+
+    /**
+     * The property section 1 exists to guarantee: the interface's answer to "can this be spent" and the
+     * wallet's own filter never disagree. Walked across the cases that used to diverge, including the two
+     * the wording predicate deliberately stays quiet about.
+     *
+     * <p>Note that includeMempoolOutputs defaults to true, so an unconfirmed coinbase reaching the maturity
+     * term is the default path rather than an unusual one.
+     */
+    @Test
+    public void theInterfaceAndTheFilterNeverDisagree() {
+        for(Network network : new Network[]{Network.MAINNET, Network.REGTEST}) {
+            Network.set(network);
+            for(Transaction tx : new Transaction[]{coinbaseTransaction(), ordinaryTransaction()}) {
+                for(int height : new int[]{-1, 0, START - 5000, START, START + 1}) {
+                    for(Integer tip : new Integer[]{null, START, START + 100, START + LONG}) {
+                        HashIndexEntry e = entry(tx, height, tip);
+                        boolean filterAllows = new CoinbaseTxoFilter(e.getWallet()).isEligible(e.getHashIndex());
+                        String where = network + " coinbase=" + tx.isCoinBase() + " height=" + height + " tip=" + tip;
+                        if(!filterAllows) {
+                            assertFalse(e.isSpendable(), "interface offers what the filter refuses: " + where);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * The two cases that used to diverge, called out on their own so a regression names itself. Both are
+     * coinbases the filter refuses and the wording predicate does not call immature.
+     */
+    @Test
+    public void aCoinbaseWithNoHeightOrNoTipIsNotSpendable() {
+        Network.set(Network.MAINNET);
+
+        HashIndexEntry noHeight = entry(coinbaseTransaction(), 0, START);
+        assertFalse(noHeight.isImmatureCoinbase());
+        assertFalse(noHeight.isSpendable(), "an unconfirmed coinbase must not be offered");
+
+        HashIndexEntry noTip = entry(coinbaseTransaction(), START, null);
+        assertFalse(noTip.isImmatureCoinbase());
+        assertFalse(noTip.isSpendable(), "a coinbase with no tip must not be offered");
     }
 
 }

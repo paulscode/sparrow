@@ -496,7 +496,7 @@ public class SendController extends WalletFormController implements Initializabl
      * money is not there. See {@link InsufficientInputsDescription}.
      */
     private String getInsufficientInputsMessage() {
-        long immatureBalance = getWalletForm().getWalletUtxosEntry().getImmatureBalance();
+        long immatureBalance = getWalletForm().getWalletTransactionsEntry().getImmatureBalance();
         if(immatureBalance <= 0) {
             return InsufficientInputsDescription.get(null);
         }

@@ -24,6 +24,8 @@ public class UtxosDialog extends WalletDialog {
     private final Label fiatBalance;
     private final Label mempoolBalance;
     private final Label fiatMempoolBalance;
+    private final Label immatureBalance;
+    private final Label fiatImmatureBalance;
     private final Label utxoCount;
     private final Table<TableCell> utxos;
 
@@ -42,6 +44,13 @@ public class UtxosDialog extends WalletDialog {
         labelPanel.addComponent(new Label("Mempool"));
         mempoolBalance = new Label("").addTo(labelPanel);
         fiatMempoolBalance = new Label("").addTo(labelPanel);
+
+        //Always present here, unlike the desktop row which hides itself when zero: a Lanterna grid is built
+        //once and reads "0 BTC" rather than vanishing, and a row appearing and disappearing under a terminal
+        //cursor is worse than a quiet zero.
+        labelPanel.addComponent(new Label("Immature"));
+        immatureBalance = new Label("").addTo(labelPanel);
+        fiatImmatureBalance = new Label("").addTo(labelPanel);
 
         labelPanel.addComponent(new Label("UTXOs"));
         utxoCount = new Label("").addTo(labelPanel);
@@ -130,13 +139,16 @@ public class UtxosDialog extends WalletDialog {
         SparrowTerminal.get().getGuiThread().invokeLater(() -> {
             balance.setText(formatBitcoinValue(walletUtxosEntry.getBalance(), true));
             mempoolBalance.setText(formatBitcoinValue(walletUtxosEntry.getMempoolBalance(), true));
+            immatureBalance.setText(formatBitcoinValue(walletUtxosEntry.getImmatureBalance(), true));
 
             if(AppServices.getFiatCurrencyExchangeRate() != null && Config.get().getExchangeSource() != ExchangeSource.NONE) {
                 fiatBalance.setText(formatFiatValue(getFiatValue(walletUtxosEntry.getBalance(), AppServices.getFiatCurrencyExchangeRate())));
                 fiatMempoolBalance.setText(formatFiatValue(getFiatValue(walletUtxosEntry.getMempoolBalance(), AppServices.getFiatCurrencyExchangeRate())));
+                fiatImmatureBalance.setText(formatFiatValue(getFiatValue(walletUtxosEntry.getImmatureBalance(), AppServices.getFiatCurrencyExchangeRate())));
             } else {
                 fiatBalance.setText("");
                 fiatMempoolBalance.setText("");
+                fiatImmatureBalance.setText("");
             }
 
             setUtxoCount(walletUtxosEntry);

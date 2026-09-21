@@ -5,6 +5,7 @@ import com.sparrowwallet.drongo.Network;
 import com.sparrowwallet.drongo.protocol.LongCoinbaseMaturity;
 import com.sparrowwallet.drongo.wallet.BlockTransaction;
 import com.sparrowwallet.drongo.wallet.BlockTransactionHashIndex;
+import com.sparrowwallet.drongo.wallet.CoinbaseTxoFilter;
 import com.sparrowwallet.drongo.wallet.Status;
 import com.sparrowwallet.drongo.wallet.Wallet;
 import com.sparrowwallet.sparrow.AppServices;
@@ -63,10 +64,20 @@ public class HashIndexEntry extends Entry implements Comparable<HashIndexEntry> 
         return getType().equals(HashIndexEntry.Type.INPUT) || getHashIndex().getSpentBy() != null;
     }
 
+    /**
+     * Can this coin be offered for spending?
+     *
+     * <p>The maturity term asks {@link CoinbaseTxoFilter} rather than restating it. Restating it is what
+     * caused the divergence this was written to close, and a second restatement would have reopened it in
+     * two places the wording predicate below deliberately stays quiet about: a coinbase with no height, and
+     * one whose tip is unknown. The filter refuses both; {@code isImmatureCoinbase()} calls neither
+     * immature, because neither belongs in a total of coins that are merely waiting. Asking the filter makes
+     * the interface and the wallet agree by construction rather than by inspection.
+     */
     public boolean isSpendable() {
         return !isSpent() && (hashIndex.getHeight() > 0 || Config.get().isIncludeMempoolOutputs())
                 && (hashIndex.getStatus() == null || hashIndex.getStatus() != Status.FROZEN)
-                && !isImmatureCoinbase();
+                && new CoinbaseTxoFilter(getWallet()).isEligible(hashIndex);
     }
 
     /**
@@ -122,6 +133,11 @@ public class HashIndexEntry extends Entry implements Comparable<HashIndexEntry> 
      * requires a height. So the figures are disjoint and immature is always a subset of the confirmed
      * balance.
      */
+    public static long getImmatureBalance(Wallet wallet) {
+        return getImmatureBalance(wallet, AppServices.getCurrentBlockHeight() == null
+                ? wallet.getStoredBlockHeight() : AppServices.getCurrentBlockHeight());
+    }
+
     public static long getImmatureBalance(Wallet wallet, Integer currentBlockHeight) {
         return wallet.getWalletUtxos().keySet().stream()
                 .filter(hashIndex -> isImmatureCoinbase(wallet, hashIndex, currentBlockHeight))

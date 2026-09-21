@@ -43,7 +43,7 @@ is, and of the four places the build departed from the plan, rather than a propo
 | 3. Say when | `MaturityEstimate`, the immature branch in `DateCell`, matching wording in `ConfirmationsDescription` |
 | 4. Send screen reason | `InsufficientInputsDescription`, wired at `SendController.addValidation()` |
 | 5. Close the fail-open | `CoinbaseTxoFilter`, rewritten to split by what is known; `CoinbaseTxoFilterTest` |
-| 6. Terminal | `DateTableCell`, using `MaturityEstimate.describeShort()` |
+| 6. Terminal | `DateTableCell` using `MaturityEstimate.describeShort()`, plus an Immature row in `UtxosDialog` |
 
 ### One thing this document had wrong
 
@@ -355,6 +355,23 @@ it. `MaturityEstimateTest` walks the whole range asserting that.
 fit. It cannot be measured without a display, so the build took the plan's own fallback: the cell reads
 `Immature (about 6 weeks)` and the tooltip carries the height, the unlock height, and a sentence naming the
 rule. If the cell turns out to have room, moving the height back is a one-line change.
+
+**`isSpendable()` asks `CoinbaseTxoFilter` rather than restating it.** The plan said to add a maturity term
+to `isSpendable()`, and the obvious term is `!isImmatureCoinbase()`. That reopened the very divergence
+section 1 exists to close, in the two cases the wording predicate deliberately stays quiet about: a coinbase
+with no height, and one whose tip is unknown. The filter refuses both; `isImmatureCoinbase()` calls neither
+immature, because neither is a coin that is merely waiting. With `includeMempoolOutputs` defaulting to
+**true**, the first of those was reachable by default. So the maturity term is now a call to the filter
+itself, which makes the interface and the wallet agree by construction rather than by inspection.
+`HashIndexEntryTest.theInterfaceAndTheFilterNeverDisagree()` walks the matrix, and both tests fail against
+the restated version.
+
+**The terminal carries the immature figure too.** Section 2 said "both screens", meaning the two desktop
+ones, and section 6 scoped the terminal to wording. A miner on Sparrow Server would still have seen a
+balance with no sign any of it was locked, which is the defect section 2 exists to fix on a different
+surface. `UtxosDialog` now has an Immature row beside Balance and Mempool. Unlike the desktop row it is
+always present rather than hidden when zero: a Lanterna grid is built once, and a row appearing and
+disappearing under a terminal cursor is worse than a quiet zero.
 
 **Neither screen reads the figure from the cached UTXO entry.** The plan said the Transactions screen could
 read it from `WalletUtxosEntry`, so the sum would not be computed twice. That would have shipped a stale

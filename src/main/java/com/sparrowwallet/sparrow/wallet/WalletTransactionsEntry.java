@@ -7,7 +7,6 @@ import com.sparrowwallet.drongo.wallet.BlockTransaction;
 import com.sparrowwallet.drongo.wallet.BlockTransactionHashIndex;
 import com.sparrowwallet.drongo.wallet.Wallet;
 import com.sparrowwallet.drongo.wallet.WalletNode;
-import com.sparrowwallet.sparrow.AppServices;
 import com.sparrowwallet.sparrow.EventManager;
 import com.sparrowwallet.sparrow.event.NewWalletTransactionsEvent;
 import com.sparrowwallet.sparrow.io.Config;
@@ -226,8 +225,7 @@ public class WalletTransactionsEntry extends Entry {
      * that entry happened to be built. The definition is shared, not the cache.
      */
     public long getImmatureBalance() {
-        return HashIndexEntry.getImmatureBalance(getWallet(), AppServices.getCurrentBlockHeight() == null
-                ? getWallet().getStoredBlockHeight() : AppServices.getCurrentBlockHeight());
+        return HashIndexEntry.getImmatureBalance(getWallet());
     }
 
     public final LongProperty mempoolBalanceProperty() {
