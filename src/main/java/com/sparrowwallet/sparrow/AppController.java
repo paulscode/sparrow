@@ -72,6 +72,7 @@ import java.io.*;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.text.ParseException;
 import java.util.*;
 import java.util.List;
@@ -603,18 +604,7 @@ public class AppController implements Initializable {
     }
 
     public void installUdevRules(ActionEvent event) {
-        String commands = """
-                sudo install -m 644 /opt/sparrowwallet/lib/runtime/conf/udev/*.rules /etc/udev/rules.d
-                sudo udevadm control --reload
-                sudo udevadm trigger
-                sudo groupadd -f -r plugdev
-                sudo usermod -aG plugdev `whoami`
-                """;
-        String home = System.getProperty(SparrowWallet.JPACKAGE_APP_PATH);
-        if(home != null && !home.startsWith("/opt/sparrowwallet") && home.endsWith("bin/Sparrow")) {
-            home = home.replace("bin/Sparrow", "");
-            commands = commands.replace("/opt/sparrowwallet/", home);
-        }
+        String commands = udevCommands(System.getProperty(SparrowWallet.JPACKAGE_APP_PATH));
 
         TextAreaDialog dialog = new TextAreaDialog(commands, false);
         dialog.initOwner(rootStack.getScene().getWindow());
@@ -625,6 +615,29 @@ public class AppController implements Initializable {
                 Open a shell and enter the following.
                 """);
         dialog.showAndWait();
+    }
+
+    /**
+     * The commands that install the udev rules this build ships, pointed at where it actually is.
+     *
+     * Upstream's named /opt/sparrowwallet and a launcher called Sparrow. This build is released as an archive the user
+     * extracts wherever they like, into a directory named Sparrow BLAKE2b with a launcher called sparrow, so those
+     * commands named a directory that never exists, the install failed, and USB devices did not connect. The directory
+     * is taken from the running launcher instead, two levels up from bin/sparrow, and quoted because its name has a
+     * space in it. Run from source there is no launcher, so the path is left for the reader to fill in.
+     */
+    static String udevCommands(String appPath) {
+        String rulesDir = appPath == null || Path.of(appPath).getParent() == null || Path.of(appPath).getParent().getParent() == null
+                ? "/path/to/Sparrow BLAKE2b/lib/runtime/conf/udev"
+                : Path.of(appPath).getParent().getParent().resolve("lib").resolve("runtime").resolve("conf").resolve("udev").toString();
+
+        return """
+                sudo install -m 644 "%s"/*.rules /etc/udev/rules.d
+                sudo udevadm control --reload
+                sudo udevadm trigger
+                sudo groupadd -f -r plugdev
+                sudo usermod -aG plugdev `whoami`
+                """.formatted(rulesDir.replace("\"", "\\\""));
     }
 
     public void openTransactionFromFile(ActionEvent event) {
