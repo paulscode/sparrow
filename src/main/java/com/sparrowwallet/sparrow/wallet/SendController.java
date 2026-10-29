@@ -42,7 +42,9 @@ import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.fxml.Initializable;
 import javafx.scene.Node;
+import javafx.scene.AccessibleRole;
 import javafx.scene.Cursor;
+import javafx.scene.input.KeyCode;
 import javafx.scene.control.*;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
@@ -1186,6 +1188,7 @@ public class SendController extends WalletFormController implements Initializabl
             optInStatus.setCursor(Cursor.DEFAULT);
             optInStatus.setOnMouseClicked(null);
         }
+        setOptInStatusActionable(actionable ? () -> markKeystores(walletTransaction.getWallet()) : null);
 
         Tooltip tooltip = new Tooltip(decision.isOptedIn()
                 ? "These signatures are not valid under the pre-fork rules, so they cannot be replayed against nodes that have not adopted the fork, and they commit to the amounts they spend."
@@ -1197,6 +1200,24 @@ public class SendController extends WalletFormController implements Initializabl
         tooltip.setWrapText(true);
         tooltip.setMaxWidth(640);
         optInStatus.setTooltip(tooltip);
+        //The explanation is the tooltip's, which a screen reader does not reach
+        optInStatus.setAccessibleHelp(tooltip.getText());
+    }
+
+    /**
+     * Lets the keyboard reach the one action the replay label offers, as a mouse can. A label is not focusable, and the
+     * marking it opens is the only remedy for the state it reports, so without this a keyboard or screen reader user was
+     * told what was wrong and given no way to fix it here. Read as a button only while it is one.
+     */
+    private void setOptInStatusActionable(Runnable action) {
+        optInStatus.setFocusTraversable(action != null);
+        optInStatus.setAccessibleRole(action != null ? AccessibleRole.BUTTON : AccessibleRole.TEXT);
+        optInStatus.setOnKeyPressed(action == null ? null : event -> {
+            if(event.getCode() == KeyCode.ENTER || event.getCode() == KeyCode.SPACE) {
+                action.run();
+                event.consume();
+            }
+        });
     }
 
     /**
@@ -1212,6 +1233,7 @@ public class SendController extends WalletFormController implements Initializabl
         optInStatus.getStyleClass().removeAll("actionable");
         optInStatus.setCursor(Cursor.DEFAULT);
         optInStatus.setOnMouseClicked(null);
+        setOptInStatusActionable(null);
 
         Tooltip tooltip = new Tooltip("One of the coins this spends descends from transaction " + proven.txid()
                 + ", whose opted-in signature, made by one of your own wallets, is not valid under the pre-fork rules. That coin does not exist on the chain that kept SHA256d, "
@@ -1225,6 +1247,8 @@ public class SendController extends WalletFormController implements Initializabl
         tooltip.setWrapText(true);
         tooltip.setMaxWidth(640);
         optInStatus.setTooltip(tooltip);
+        //The explanation is the tooltip's, which a screen reader does not reach
+        optInStatus.setAccessibleHelp(tooltip.getText());
     }
 
     /**
