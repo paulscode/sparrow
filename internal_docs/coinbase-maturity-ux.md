@@ -31,6 +31,23 @@ That is our own doing as much as the chain's: our StartOS and Umbrel mining inst
 solo miners to send payouts to an external wallet like this one, so these are exactly the coins
 our users hold.
 
+## The schedule moved (2026-10-28)
+
+Knots v29.4.3.knots20260508 replaced the flat depth with one chosen per coin by its mining height,
+read from the tagged source (`chainparams.cpp:139-158`, `tx_verify.cpp:195-249`, `validation.cpp:1021`):
+
+| Coinbase mined at | Relay depth |
+|---|---|
+| below 979919 | 6480, the first schedule's, for every older coinbase as before |
+| 979919 or later | 25920 (180 &times; 144), about six months |
+| a block whose parent's median time past is at or after 2027-09-01 (RDTS expiry) | 100 |
+
+`LongCoinbaseMaturity.maturityDepth(network, coinbaseHeight)` implements it, and holds the last row to
+25920 too, since that boundary is a time the class is not asked about. That overstates, the safe
+direction. Nothing in the UX below changed: it was built on `spendableFromHeight`, which follows the
+depth per coin, and the advice at the end of this document not to couple anything to one figure is
+why. The figures in the sections below are the first schedule's, kept as they were argued.
+
 ## Where things stand
 
 **All six sections are implemented.** This document is now a record of why the code is shaped the way it

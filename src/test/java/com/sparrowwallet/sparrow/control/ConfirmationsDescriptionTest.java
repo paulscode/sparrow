@@ -59,6 +59,19 @@ public class ConfirmationsDescriptionTest {
         assertTrue(description.contains("(" + MaturityEstimate.describe(RELEASE - (START + 500 + 1)) + ")"), description);
     }
 
+    /**
+     * A reward mined from 979919 is held for 25920 blocks rather than 6480, and the unlock height the description
+     * names has to be that one: 979919 + 25920 = 1005839.
+     */
+    @Test
+    public void aCoinbaseMinedUnderTheRollingRuleNamesItsOwnUnlockHeight() {
+        Network.set(Network.MAINNET);
+        int minedAt = 979919;
+        String description = ConfirmationsDescription.get(6480, true, minedAt, minedAt + 6479);
+        assertTrue(description.contains("immature coinbase"), "still held past the old 6480: " + description);
+        assertTrue(description.contains("spendable from block 1005839"), description);
+    }
+
     /** And stops saying it the moment the coin is actually spendable. */
     @Test
     public void onceSpendableItReadsAsAnyOtherCoin() {

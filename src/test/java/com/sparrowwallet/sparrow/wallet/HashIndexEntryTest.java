@@ -84,6 +84,16 @@ public class HashIndexEntryTest {
      * A coin mined before the deployment is immature too. The interface must say so, or it shows a coin as
      * ordinary that the network will not carry a spend of.
      */
+    /** Each reward is held to the depth it was mined under: 6480 below 979919, 25920 from it. */
+    @Test
+    public void aCoinbaseMinedUnderTheRollingRuleIsHeldFor25920Blocks() {
+        Network.set(Network.MAINNET);
+        assertFalse(entry(coinbaseTransaction(), 979918, 979918 + 6479).isImmatureCoinbase(), "mined at 979918, 6480 deep");
+        assertTrue(entry(coinbaseTransaction(), 979919, 979919 + 6479).isImmatureCoinbase(), "mined at 979919, 6480 is not enough");
+        assertTrue(entry(coinbaseTransaction(), 979919, 1005837).isImmatureCoinbase(), "a block short of 25920");
+        assertFalse(entry(coinbaseTransaction(), 979919, 1005838).isImmatureCoinbase(), "spendable in block 1005839");
+    }
+
     @Test
     public void aCoinbaseMinedBeforeTheDeploymentIsAlsoImmature() {
         Network.set(Network.MAINNET);

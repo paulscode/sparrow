@@ -23,8 +23,8 @@ public final class ConfirmationsDescription {
      *
      * <p>The count is bound only until {@code BLOCKS_TO_FULLY_CONFIRM} and is deliberately frozen after
      * that, so it cannot say how much longer a coin has to wait. A height and a tip can, and for a coin held
-     * for forty-five days the difference is the whole point: without this it reads "6+ confirmations"
-     * throughout, which is true and useless.
+     * for months the difference is the whole point: without this it reads "6+ confirmations" throughout,
+     * which is true and useless. How long depends on when the coin was mined; LongCoinbaseMaturity says.
      *
      * @param coinbaseHeight the block the coinbase was mined in, or 0 if not known or not a coinbase
      * @param currentBlockHeight the chain tip, or null if not known
