@@ -114,7 +114,7 @@ public class TcpTransport implements CloseableTransport, TimeoutCounter {
                 //it was waited out as though the server had gone silent, retried with ever longer timeouts, and read as a
                 //hang. Said as what it is instead.
                 if(!recvIdSet.isEmpty() && sentIdSet.containsAll(recvIdSet) && recvIdSet.size() < sentIdSet.size()) {
-                    throw new IOException("Server " + server + " answered " + recvIdSet.size() + " of the " + sentIdSet.size()
+                    throw new ServerProtocolException("Server " + server + " answered " + recvIdSet.size() + " of the " + sentIdSet.size()
                             + " requests sent together, so it does not support JSON-RPC batching");
                 }
                 if(!sentIdSet.equals(recvIdSet)) {
@@ -123,10 +123,10 @@ public class TcpTransport implements CloseableTransport, TimeoutCounter {
             } while(!sentIdSet.equals(recvIdSet));
 
             //The client refuses a reply without the version field as "Not a JSON-RPC response", which the RPC layer takes for a
-            //transient failure and retries until it gives up with nothing to say why. A server that leaves it out leaves it
-            //out every time, so this fails once and says so.
+            //transient failure and retries until it gives up, the reason buried under "Retries exhausted". A server that leaves
+            //it out leaves it out every time, so this fails once and says so, unchecked so that nothing retries it.
             if(!JSONRPC_VERSION_FIELD.matcher(recv).find()) {
-                throw new IOException("Server " + server + " replied without the \"jsonrpc\": \"2.0\" field JSON-RPC 2.0 requires");
+                throw new ServerProtocolException("Server " + server + " replied without the \"jsonrpc\": \"2.0\" field JSON-RPC 2.0 requires");
             }
 
             return recv;
