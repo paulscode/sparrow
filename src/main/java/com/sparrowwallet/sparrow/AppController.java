@@ -627,17 +627,26 @@ public class AppController implements Initializable {
      * space in it. Run from source there is no launcher, so the path is left for the reader to fill in.
      */
     static String udevCommands(String appPath) {
-        String rulesDir = appPath == null || Path.of(appPath).getParent() == null || Path.of(appPath).getParent().getParent() == null
-                ? "/path/to/Sparrow BLAKE2b/lib/runtime/conf/udev"
-                : Path.of(appPath).getParent().getParent().resolve("lib").resolve("runtime").resolve("conf").resolve("udev").toString();
+        //String operations rather than Path, which would write the separators of whatever OS this runs on: the commands are
+        //for Linux, and the tests run on every release runner
+        String rulesDir = "/path/to/Sparrow BLAKE2b/lib/runtime/conf/udev";
+        if(appPath != null) {
+            int bin = appPath.lastIndexOf('/');
+            int home = bin > 0 ? appPath.lastIndexOf('/', bin - 1) : -1;
+            if(home > 0) {
+                rulesDir = appPath.substring(0, home) + "/lib/runtime/conf/udev";
+            }
+        }
 
+        //Single quoted, which leaves nothing in the path live for the shell; a single quote in it is closed, escaped and reopened
+        String quoted = "'" + rulesDir.replace("'", "'\\''") + "'";
         return """
-                sudo install -m 644 "%s"/*.rules /etc/udev/rules.d
+                sudo install -m 644 %s/*.rules /etc/udev/rules.d
                 sudo udevadm control --reload
                 sudo udevadm trigger
                 sudo groupadd -f -r plugdev
                 sudo usermod -aG plugdev `whoami`
-                """.formatted(rulesDir.replace("\"", "\\\""));
+                """.formatted(quoted);
     }
 
     public void openTransactionFromFile(ActionEvent event) {

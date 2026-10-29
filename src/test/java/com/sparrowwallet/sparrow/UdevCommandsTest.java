@@ -11,12 +11,19 @@ public class UdevCommandsTest {
     @Test
     public void pointsAtTheDirectoryTheLauncherRunsFrom() {
         String commands = AppController.udevCommands("/home/someone/apps/Sparrow BLAKE2b/bin/sparrow");
-        Assertions.assertTrue(commands.startsWith("sudo install -m 644 \"/home/someone/apps/Sparrow BLAKE2b/lib/runtime/conf/udev\"/*.rules /etc/udev/rules.d"), commands);
+        Assertions.assertTrue(commands.startsWith("sudo install -m 644 '/home/someone/apps/Sparrow BLAKE2b/lib/runtime/conf/udev'/*.rules /etc/udev/rules.d"), commands);
         Assertions.assertFalse(commands.contains("/opt/sparrowwallet"), commands);
     }
 
     @Test
     public void runFromSourceItLeavesThePathToFillIn() {
-        Assertions.assertTrue(AppController.udevCommands(null).contains("\"/path/to/Sparrow BLAKE2b/lib/runtime/conf/udev\"/*.rules"));
+        Assertions.assertTrue(AppController.udevCommands(null).contains("'/path/to/Sparrow BLAKE2b/lib/runtime/conf/udev'/*.rules"));
+    }
+
+    /** Nothing in the path is live for the shell, a single quote included. */
+    @Test
+    public void quotesThePathSoNothingInItIsInterpreted() {
+        String commands = AppController.udevCommands("/home/o'brien/$HOME/`x`/Sparrow BLAKE2b/bin/sparrow");
+        Assertions.assertTrue(commands.startsWith("sudo install -m 644 '/home/o'\\''brien/$HOME/`x`/Sparrow BLAKE2b/lib/runtime/conf/udev'/*.rules"), commands);
     }
 }
