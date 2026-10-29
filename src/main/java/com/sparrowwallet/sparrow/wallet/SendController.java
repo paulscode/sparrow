@@ -1194,6 +1194,8 @@ public class SendController extends WalletFormController implements Initializabl
                 : "Signing the way it always has been, because " + decision.getReason() + "."
                     + (decision.getRemedy() == null ? "" : System.lineSeparator() + System.lineSeparator() + decision.getRemedy()));
         tooltip.setShowDuration(Duration.INDEFINITE);
+        tooltip.setWrapText(true);
+        tooltip.setMaxWidth(640);
         optInStatus.setTooltip(tooltip);
     }
 
@@ -1220,6 +1222,8 @@ public class SendController extends WalletFormController implements Initializabl
                 + "Keep that coin in this transaction. Leaving it out, here or in a fee bump that replaces this transaction, leaves the rest unprotected."
                 + System.lineSeparator() + System.lineSeparator() + ChainOnlyCoins.CAVEAT);
         tooltip.setShowDuration(Duration.INDEFINITE);
+        tooltip.setWrapText(true);
+        tooltip.setMaxWidth(640);
         optInStatus.setTooltip(tooltip);
     }
 

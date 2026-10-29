@@ -7,6 +7,7 @@ import com.sparrowwallet.sparrow.glyphfont.GlyphUtils;
 import com.sparrowwallet.sparrow.glyphfont.FontAwesome5;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import org.controlsfx.glyphfont.Glyph;
 
@@ -43,11 +44,9 @@ public class UnifiedSigHashKeystoreDialog extends Dialog<List<Keystore>> {
         dialogPane.getStylesheets().add(AppServices.class.getResource("general.css").toExternalForm());
         dialogPane.getButtonTypes().addAll(ButtonType.CANCEL);
         dialogPane.setPrefWidth(560);
-        //Sized for the header, a line per keystore and the line counting them. A fixed height clipped the counting
-        //line once it was added, and clipped further the more keystores a wallet holds.
-        //Sized for the header, a line per keystore and the line counting them, so nothing is clipped and nothing
-        //is left as empty space below the buttons
-        dialogPane.setPrefHeight(255 + (wallet.getKeystores().size() * 30));
+        //Sized to its content rather than to a line count: the line counting the signers wraps to a second line in some
+        //states, and a fixed height cut it off mid sentence. After Shrike #77.
+        dialogPane.setMinHeight(Region.USE_PREF_SIZE);
         AppServices.moveToActiveWindowScreen(this);
 
         Glyph lock = new Glyph(FontAwesome5.FONT_NAME, FontAwesome5.Glyph.LOCK);
@@ -90,6 +89,10 @@ public class UnifiedSigHashKeystoreDialog extends Dialog<List<Keystore>> {
                         : any ? "Transactions opt in when a marked signer signs. " : "Transactions will not opt in. ")
                         + marked + " of " + wallet.getKeystores().size() + " marked"
                         + (threshold == null ? "." : ", " + threshold + " needed to sign."));
+                //The text changes length as boxes are ticked, and can wrap to a second line, so the window follows it
+                if(dialogPane.getScene() != null && dialogPane.getScene().getWindow() != null) {
+                    dialogPane.getScene().getWindow().sizeToScene();
+                }
             };
             marks.values().forEach(mark -> mark.selectedProperty().addListener((observable, was, is) -> update.run()));
             update.run();

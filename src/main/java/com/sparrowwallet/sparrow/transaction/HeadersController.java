@@ -1137,6 +1137,8 @@ public class HeadersController extends TransactionFormController implements Init
                     label.setGraphic(GlyphUtils.getSuccessGlyph());
                     Tooltip tooltip = new Tooltip(chainOnlyCoinDetail(proven.get()));
                     tooltip.setShowDuration(Duration.INDEFINITE);
+                    tooltip.setWrapText(true);
+                    tooltip.setMaxWidth(640);
                     label.setTooltip(tooltip);
                 }
                 return;
@@ -1150,9 +1152,13 @@ public class HeadersController extends TransactionFormController implements Init
         for(Label label : List.of(signingWalletOptIn, signaturesOptIn)) {
             label.setText(uncertain ? UnifiedSigHashDecision.UNCHECKED_SUMMARY : UnifiedSigHashDecision.summaryFor(optedIn));
             label.setGraphic(optedIn && !uncertain ? GlyphUtils.getSuccessGlyph() : GlyphUtils.getWarningGlyph());
-            label.setTooltip(new Tooltip(uncertain
+            Tooltip tooltip = new Tooltip(uncertain
                     ? uncheckedStatusDetail(counts)
-                    : optedInStatusDetail(optedIn, everySignature, counts)));
+                    : optedInStatusDetail(optedIn, everySignature, counts));
+            //Paragraphs, not a line: unwrapped they ran off the screen
+            tooltip.setWrapText(true);
+            tooltip.setMaxWidth(640);
+            label.setTooltip(tooltip);
         }
     }
 
