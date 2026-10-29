@@ -27,7 +27,7 @@ public class PublicElectrumDialog extends ServerProxyDialog {
         mainPanel.addComponent(new EmptySpace(TerminalSize.ONE));
         mainPanel.addComponent(new Label(available
                         ? "Using a public server means it can see your transactions"
-                        : "No public server follows this chain. Use Bitcoin Core or a private Electrum server."),
+                        : "No public server follows this chain. Use a full node or a private Electrum server."),
                 GridLayout.createLayoutData(GridLayout.Alignment.BEGINNING, GridLayout.Alignment.CENTER,true,false, 3, 1));
 
         mainPanel.addComponent(new EmptySpace(TerminalSize.ONE));

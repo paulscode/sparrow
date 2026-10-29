@@ -1068,7 +1068,7 @@ public class DevicePane extends TitledDescriptionPane {
                     EventManager.get().post(new WalletImportEvent(discoveredWallets));
                 } else {
                     AppServices.showErrorDialog("No existing wallet found",
-                            Config.get().getServerType() == ServerType.BITCOIN_CORE ? "The configured server type is Bitcoin Core, which does not support wallet discovery.\n\n" +
+                            Config.get().getServerType() == ServerType.BITCOIN_CORE ? "The configured server type is Full Node, which does not support wallet discovery.\n\n" +
                                     "You can however import the " + device.getModel().toDisplayString() + " and scan the blockchain by supplying a start date." :
                                     "Could not find an HD wallet with existing transactions using the " + device.getModel().toDisplayString() + ".");
                     setDefaultStatus();

@@ -355,7 +355,7 @@ public class Bwt {
                                 Bwt.this.shutdown();
                                 terminating = false;
                             } else {
-                                Platform.runLater(() -> EventManager.get().post(new BwtBootStatusEvent("Connecting to Bitcoin Core node " + Config.get().getServerDisplayName() + "...")));
+                                Platform.runLater(() -> EventManager.get().post(new BwtBootStatusEvent("Connecting to node " + Config.get().getServerDisplayName() + "...")));
                             }
                         }
 
@@ -406,7 +406,7 @@ public class Bwt {
                         Bwt.this.start(notifier);
                     } else {
                         if(AppServices.get().getOpenWallets().keySet().stream().anyMatch(wallet -> wallet.getScriptType() == ScriptType.P2TR)) {
-                            throw new IllegalStateException("Upgrade Bitcoin Core to v24 or later for Taproot wallet support");
+                            throw new IllegalStateException("Upgrade the node to v24 or later for Taproot wallet support");
                         }
 
                         Bwt.this.start(AppServices.get().getOpenWallets().keySet(), notifier);

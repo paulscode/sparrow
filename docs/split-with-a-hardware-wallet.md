@@ -79,7 +79,7 @@ Every coin in the hardware wallet + protected coin --(5: consolidation)--> fresh
 
 ## Large wallets
 
-Bitcoin Core & Knots won't relay a transaction heavier than 400,000 weight units (`MAX_STANDARD_TX_WEIGHT`). That's roughly 1,400 native segwit (P2WPKH) inputs. Above that, split step 5 into batches. You don't need a new step 3 for each one: the output of batch 1 only exists on the BLAKE2b chain, so include it in batch 2, & so on. Sparrow (BLAKE2b) follows a coin back at most 6 transactions to the step 3 signature, so if you restart it partway through a long run of batches, do a fresh step 3 every 6 batches.
+Nodes won't relay a transaction heavier than 400,000 weight units (`MAX_STANDARD_TX_WEIGHT`). That's roughly 1,400 native segwit (P2WPKH) inputs. Above that, split step 5 into batches. You don't need a new step 3 for each one: the output of batch 1 only exists on the BLAKE2b chain, so include it in batch 2, & so on. Sparrow (BLAKE2b) follows a coin back at most 6 transactions to the step 3 signature, so if you restart it partway through a long run of batches, do a fresh step 3 every 6 batches.
 
 ## Privacy
 

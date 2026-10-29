@@ -68,7 +68,7 @@ public class BitcoindTransport implements Transport {
             }
             this.bitcoindUrl = new URI(serverUrl + "/wallet/" + bitcoindWallet).toURL();
         } catch(MalformedURLException | URISyntaxException e) {
-            log.error("Malformed Bitcoin Core RPC URL", e);
+            log.error("Malformed node RPC URL", e);
         }
     }
 
@@ -117,7 +117,7 @@ public class BitcoindTransport implements Transport {
             throw e;
         } catch(IOException e) {
             //From v32.1 Bitcoin Core closes the connection from a client outside rpcallowip without answering, where earlier versions answered 403 below
-            throw new IOException("Bitcoin Core at " + bitcoindUrl.getAuthority() + " closed the connection without responding, check its rpcallowip settings", e);
+            throw new IOException("The node at " + bitcoindUrl.getAuthority() + " closed the connection without responding, check its rpcallowip settings", e);
         }
 
         //Trust on first use, as for non-CA-certified Electrum servers: the certificate presented by the node on the first connection is saved, and required on all connections thereafter
@@ -136,7 +136,7 @@ public class BitcoindTransport implements Transport {
         if(statusCode == 401) {
             throw new IOException((cookieFile == null ? "User/pass" : "Cookie file") + " authentication failed");
         } else if(statusCode == 403) {
-            throw new IOException("Bitcoin Core at " + bitcoindUrl.getAuthority() + " refused RPC access from this computer, check its rpcallowip and rpcwhitelist settings");
+            throw new IOException("The node at " + bitcoindUrl.getAuthority() + " refused RPC access from this computer, check its rpcallowip and rpcwhitelist settings");
         }
         InputStream inputStream = connection.getErrorStream() == null ? connection.getInputStream() : connection.getErrorStream();
 
@@ -160,7 +160,7 @@ public class BitcoindTransport implements Transport {
         //A response carrying neither a result nor an error leaves the client constructing a JsonRpcException from a null error message, which throws a NullPointerException naming nothing.
         //Bitcoin Core always answers with a JSON-RPC object, so an empty or HTML body here comes from something else on the network path - typically a TLS terminating proxy sent a plain HTTP request.
         if(!response.startsWith("{")) {
-            throw new IOException("Bitcoin Core at " + bitcoindUrl.getAuthority() + " did not return a JSON-RPC response to the " + bitcoindUrl.getProtocol() + " request (HTTP " + statusCode + ")");
+            throw new IOException("The node at " + bitcoindUrl.getAuthority() + " did not return a JSON-RPC response to the " + bitcoindUrl.getProtocol() + " request (HTTP " + statusCode + ")");
         }
 
         return response;
@@ -190,7 +190,7 @@ public class BitcoindTransport implements Transport {
     private String getBitcoindAuthEncoded() throws IOException {
         if(cookieFile != null) {
             if(!cookieFile.exists()) {
-                throw new IOException("Cannot find Bitcoin Core cookie file at " + cookieFile.getAbsolutePath());
+                throw new IOException("Cannot find the node's cookie file at " + cookieFile.getAbsolutePath());
             }
 
             if(cookieFileTimestamp == null || cookieFile.lastModified() != cookieFileTimestamp) {
@@ -199,7 +199,7 @@ public class BitcoindTransport implements Transport {
                     bitcoindAuthEncoded = Base64.getEncoder().encodeToString(userPass.getBytes(StandardCharsets.UTF_8));
                     cookieFileTimestamp = cookieFile.lastModified();
                 } catch(Exception e) {
-                    log.warn("Cannot read Bitcoin Core .cookie file", e);
+                    log.warn("Cannot read the node's .cookie file", e);
                 }
             }
         }

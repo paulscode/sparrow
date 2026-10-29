@@ -46,7 +46,7 @@
                                 <ServerType fx:constant="PUBLIC_ELECTRUM_SERVER"/>
                             </userData>
                         </ToggleButton>
-                        <ToggleButton accessibleRole="RADIO_BUTTON" text="Bitcoin Core" toggleGroup="$serverTypeToggleGroup">
+                        <ToggleButton accessibleRole="RADIO_BUTTON" text="Full Node" toggleGroup="$serverTypeToggleGroup">
                             <graphic>
                                 <Glyph fontFamily="Font Awesome 5 Free Solid" fontSize="12" icon="TOGGLE_ON" styleClass="bitcoin-core" />
                             </graphic>
@@ -99,7 +99,7 @@
     </Form>
 
     <Form fx:id="coreForm" GridPane.columnIndex="0" GridPane.rowIndex="1">
-        <Fieldset inputGrow="SOMETIMES" text="Bitcoin Core RPC">
+        <Fieldset inputGrow="SOMETIMES" text="Node RPC">
             <Field text="URL:">
                 <StackPane>
                     <ComboBox fx:id="recentCoreServers" accessibleText="Choose a recent server" />
@@ -140,7 +140,7 @@
                 <PasswordField fx:id="corePass"/>
             </Field>
             <Field text="Use Proxy:">
-                <UnlabeledToggleSwitch fx:id="coreUseProxy"/><HelpLabel helpText="Bitcoin Core RPC onion URLs, and all other non-RPC external addresses will be connected via this proxy if configured." />
+                <UnlabeledToggleSwitch fx:id="coreUseProxy"/><HelpLabel helpText="Node RPC onion URLs, and all other non-RPC external addresses will be connected via this proxy if configured." />
             </Field>
             <Field text="Proxy URL:">
                 <TextField fx:id="coreProxyHost" promptText="e.g. 127.0.0.1" />

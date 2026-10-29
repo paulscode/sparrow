@@ -67,7 +67,7 @@ public class WelcomeController {
             PauseTransition wait = new PauseTransition(Duration.millis(200));
             wait.setOnFinished((e) -> {
                 serverToggle.setSelected(true);
-                serverStatus.setText("Connected to Bitcoin Core (demonstration only)");
+                serverStatus.setText("Connected to a Full Node (demonstration only)");
             });
             wait.play();
             return true;
@@ -106,7 +106,7 @@ public class WelcomeController {
             welcomeBox.getStyleClass().clear();
             welcomeBox.getStyleClass().add("bitcoin-core");
             serverToggle.setSelected(true);
-            serverStatus.setText("Connected to Bitcoin Core (demonstration only)");
+            serverStatus.setText("Connected to a Full Node (demonstration only)");
             return true;
         }
 
