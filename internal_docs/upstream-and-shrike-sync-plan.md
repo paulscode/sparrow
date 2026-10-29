@@ -15,8 +15,10 @@ Everything was compared against `blake2b` at `98faeb96`, which is the tag `v2.5.
 what the latest release was built from, so every finding below describes released code unless it says
 otherwise. Submodule pointers at that tag: drongo `3039857b`, lark `0a9aa329`.
 
-This document records what was found, so that it survives the conversation it came out of. It also says
-how each item should be done. Nothing in it has been implemented yet.
+This document records what was found, so that it survives the conversation it came out of, and how each item
+was to be done. **As of 2026-10-29 most of it has landed** on `replay-safe-inputs` (with drongo and lark on their
+`next-release` branches) for 2.5.6-blake2b.7; the table below says which. Items 16 and 18 are deliberately
+deferred.
 
 **Updated 2026-10-29** after a second look at both projects:
 
@@ -32,26 +34,26 @@ the merge, and 9b.
 
 | # | Item | Severity | Kind of work | Status |
 |---|---|---|---|---|
-| 1 | Header sync accepts v1 headers above the fork | **Critical** | drongo, new code | Not started |
-| 2 | A private key sweep never opts in | High | Port shrike 6f0f4021 and ca96c5ee | Not started |
-| 3 | The PayNym notification transaction never opts in | High | One line | Not started |
-| 4 | The transaction screen's replay label goes stale | High | Port the idea of shrike 431fdcb8 and #28 by hand | PSBT half done with the chain-only-coins work; final transactions not started |
-| 5 | Bitcoin Core mode builds an 80-byte tip | High (if Core mode is supported) | Adapt shrike 1fb0355a | Not started |
-| 6 | Finalizing can discard the only opted-in signature | High | Port shrike drongo 33edc7c by hand | Not started |
-| 7 | drongo signature-handling hardening | Medium | Port four shrike drongo commits | Not started |
-| 8 | The udev rules dialog points at upstream's install path | Medium | Adapt shrike 40d20732 | Not started |
-| 9 | Merge upstream (sparrow, drongo, lark) | Medium; **blocked on 9a** | Merge, plus build and CI hand edits | Waiting on an upstream tag, and on 9a |
-| 10 | Coinbase maturity: Knots 29.4.3 holds rewards mined from 979919 for 25920 blocks | **High**, time-bound | drongo `LongCoinbaseMaturity` per coin, plus wording | Not started |
-| 11 | CI runs the tests on every push | Medium | Port shrike #54 | Not started |
-| 12 | Electrum client robustness, and the `blake2b_fork` spec | Low to medium | Spec text and small client fixes | Not started |
-| 13 | Smaller items | Low | Various | Not started |
-| 14 | Repository hygiene | Low | Local git configuration | Not started |
-| 15 | Wallet-built transactions against the RDTS rules | Medium | Audit, plus tests pinning the limits relied on | Not started |
-| 16 | A split from the SHA256d side, using RDTS | Low, research first | Research, then possibly a guide section | Not started |
+| 1 | Header sync accepts v1 headers above the fork | **Critical** | drongo, new code | Done |
+| 2 | A private key sweep never opts in | High | Port shrike 6f0f4021 and ca96c5ee | Done |
+| 3 | The PayNym notification transaction never opts in | High | One line | Done |
+| 4 | The transaction screen's replay label goes stale | High | Port the idea of shrike 431fdcb8 and #28 by hand | Done |
+| 5 | Bitcoin Core mode builds an 80-byte tip | High (if Core mode is supported) | Adapt shrike 1fb0355a | Done; not yet run against a live node |
+| 6 | Finalizing can discard the only opted-in signature | High | Port shrike drongo 33edc7c by hand | Done |
+| 7 | drongo signature-handling hardening | Medium | Port four shrike drongo commits | Done |
+| 8 | The udev rules dialog points at upstream's install path | Medium | Adapt shrike 40d20732 | Done |
+| 9 | Merge upstream (sparrow, drongo, lark) | Medium; **blocked on 9a** | Merge, plus build and CI hand edits | Done (merged untagged upstream master at abb1c2cc, with 9a) |
+| 10 | Coinbase maturity: Knots 29.4.3 holds rewards mined from 979919 for 25920 blocks | **High**, time-bound | drongo `LongCoinbaseMaturity` per coin, plus wording | Done |
+| 11 | CI runs the tests on every push | Medium | Port shrike #54 | Done |
+| 12 | Electrum client robustness, and the `blake2b_fork` spec | Low to medium | Spec text and small client fixes | Client half done; the `blake2b_fork` spec lives outside this repository |
+| 13 | Smaller items | Low | Various | Done, except the download verifier |
+| 14 | Repository hygiene | Low | Local git configuration | Done (local tags and tagOpt; the fork's stale `master` left alone) |
+| 15 | Wallet-built transactions against the RDTS rules | Medium | Audit, plus tests pinning the limits relied on | Done (output rule checked at broadcast) |
+| 16 | A split from the SHA256d side, using RDTS | Low, research first | Research, then possibly a guide section | Not started (research) |
 | 17 | Whether watch-only wallets count as the user's keys | Decided: they don't | Done with the chain-only-coins work | Done |
-| 18 | An explicit "these keys are mine" flag on watch-only keystores | Low, only if users ask | Migration, toggle, test | Not started |
-| 19 | The bundled Tor can no longer join the network | **Critical** | Dependency bump (shrike #88) | Not started |
-| 20 | Server settings throw on the empty public server list | Medium | One line (shrike #85) | Not started |
+| 18 | An explicit "these keys are mine" flag on watch-only keystores | Low, only if users ask | Migration, toggle, test | Not started (only if users ask) |
+| 19 | The bundled Tor can no longer join the network | **Critical** | Dependency bump (shrike #88) | Done, bootstrapped live |
+| 20 | Server settings throw on the empty public server list | Medium | One line (shrike #85) | Done |
 
 Suggested order (revised 2026-10-29): 19 and 10 first, in one release, since both are live for users now, with 20
 alongside; then 1, then 2 and 3 together, then 4 (alongside the chain-only-coins work it overlaps), 5,
