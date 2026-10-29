@@ -1305,7 +1305,12 @@ public class ElectrumServer {
         Set<String> txids = new LinkedHashSet<>();
         for(Transaction transaction : transactions) {
             Map<TransactionInput, WalletNode> signingNodes = wallet.getSigningNodes(transaction, inputTransactions, walletOutputScripts);
-            if(signingNodes.values().stream().anyMatch(node -> node.getWallet().getScriptType() == ScriptType.P2TR)) {
+            //An opted-in signature commits to every spent output whatever the script type, as a taproot one does, so either
+            //needs the transactions behind inputs outside the wallet. Without them an opted-in spend with one, a payjoin
+            //being the ordinary case, cannot be checked and is left out of the history.
+            boolean needsEverySpentOutput = signingNodes.values().stream().anyMatch(node -> node.getWallet().getScriptType() == ScriptType.P2TR)
+                    || signingNodes.keySet().stream().anyMatch(ElectrumServer::carriesUnifiedSignature);
+            if(needsEverySpentOutput) {
                 transaction.getInputs().stream().map(input -> input.getOutpoint().getHash())
                         .filter(txid -> !spentTransactionsThisPass.containsKey(txid) && inputTransactions.apply(txid) == null).forEach(txid -> txids.add(txid.toString()));
             }
@@ -1330,6 +1335,11 @@ public class ElectrumServer {
         } catch(ElectrumServerRpcException e) {
             throw new ServerException(e.getMessage(), e.getCause());
         }
+    }
+
+    private static boolean carriesUnifiedSignature(TransactionInput txInput) {
+        List<TransactionSignature> signatures = txInput.hasWitness() ? txInput.getWitness().getSignatures() : txInput.getScriptSig().getSignatures();
+        return signatures.stream().anyMatch(signature -> (signature.sighashFlags & SigHash.UNIFIED_FLAG) != 0);
     }
 
     /**

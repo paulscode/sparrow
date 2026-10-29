@@ -149,6 +149,47 @@ public class UnconfirmedSpendTest {
         assertTrue(server.requested.isEmpty());
     }
 
+    /**
+     * The wallet's own opted-in send, which is what this fork makes by default. Its signatures are over the unified
+     * message, and checking them against the legacy one would leave every such send out of the history and blame the
+     * server for it.
+     */
+    @Test
+    public void keepsAnOptedInSpend() throws Exception {
+        for(ScriptType scriptType : List.of(ScriptType.P2PKH, ScriptType.P2SH_P2WPKH, ScriptType.P2WPKH, ScriptType.P2TR)) {
+            ElectrumServer.clearPreviousServerState();
+            Wallet wallet = signingWallet(scriptType);
+            Transaction funding = fund(wallet);
+            Transaction spend = optedInSpend(wallet);
+            assertTrue(spend.getInputs().stream().flatMap(input -> (input.hasWitness() ? input.getWitness().getSignatures() : input.getScriptSig().getSignatures()).stream())
+                    .anyMatch(signature -> (signature.sighashFlags & SigHash.UNIFIED_FLAG) != 0), scriptType + " spend must carry an opted-in signature");
+
+            Map<WalletNode, Set<BlockTransactionHash>> nodeTransactionMap = history(wallet, funding, spend);
+            getReferencedTransactions(wallet, nodeTransactionMap);
+
+            assertTrue(holds(nodeTransactionMap, spend), scriptType + " opted-in spend must be kept");
+            assertTrue(wallet.getTransactions().containsKey(spend.getTxId()), scriptType + " opted-in spend must reach the history");
+        }
+    }
+
+    /**
+     * An opted-in signature commits to every spent output whatever the script type, so an input outside the wallet has
+     * to be fetched for it as it does for taproot.
+     */
+    @Test
+    public void fetchesTheTransactionsAnOptedInSpendCommitsTo() throws Exception {
+        Wallet wallet = signingWallet(ScriptType.P2WPKH);
+        fund(wallet);
+        Transaction signed = optedInSpend(wallet);
+        Transaction withForeignInput = new Transaction(signed.bitcoinSerialize());
+        withForeignInput.addInput(Sha256Hash.wrap(FOREIGN_TXID), 0, new Script(new byte[0]));
+
+        Set<Sha256Hash> unsigned = new ElectrumServer().getUnsignedTransactions(wallet, Map.of(withForeignInput.getTxId(), withForeignInput), txid -> body(wallet, txid));
+
+        assertEquals(Set.of(FOREIGN_TXID), server.requested);
+        assertEquals(Set.of(withForeignInput.getTxId()), unsigned, "the signature does not commit to the input added after it");
+    }
+
     @Test
     public void fetchesTheTransactionsATaprootSpendCommitsTo() throws Exception {
         Wallet wallet = signingWallet(ScriptType.P2TR);
@@ -342,6 +383,23 @@ public class UnconfirmedSpendTest {
         addressNode.getTransactionOutputs().add(new BlockTransactionHashIndex(funding.getTxId(), FUNDING_HEIGHT, new Date(), 0L, 0, 1_000_000L));
 
         return funding;
+    }
+
+    /** As signedSpend, opted in the way AppServices.applyUnifiedSigHash does for a wallet whose decision is to opt in. */
+    private static Transaction optedInSpend(Wallet wallet) throws Exception {
+        WalletNode addressNode = wallet.getNode(KeyPurpose.RECEIVE).getChildren().iterator().next();
+        TransactionParameters params = new TransactionParameters(List.of(new PriorityUtxoSelector(FUNDING_HEIGHT + 6)), Collections.emptyList(),
+                List.of(new Payment(wallet.getAddress(addressNode), "test", 500_000L, false)), Collections.emptyList(),
+                Collections.emptySet(), 10.0d, 1.0d, 1.0d, null, FUNDING_HEIGHT + 6, false, false, true);
+        PSBT psbt = wallet.createWalletTransaction(params).createPSBT();
+        for(com.sparrowwallet.drongo.psbt.PSBTInput psbtInput : psbt.getPsbtInputs()) {
+            SigHash sigHash = psbtInput.getSigHash();
+            psbtInput.setSigHash(sigHash == null ? SigHash.UNIFIED_ALL : sigHash.withUnified());
+        }
+        wallet.sign(psbt);
+        wallet.finalise(psbt);
+
+        return psbt.extractTransaction();
     }
 
     private static Transaction signedSpend(Wallet wallet) throws Exception {
