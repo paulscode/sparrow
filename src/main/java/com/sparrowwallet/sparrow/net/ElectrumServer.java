@@ -18,6 +18,7 @@ import com.sparrowwallet.drongo.silentpayments.SilentPaymentUtils;
 import com.sparrowwallet.drongo.wallet.*;
 import com.sparrowwallet.sparrow.AppServices;
 import com.sparrowwallet.sparrow.BlockSummary;
+import com.sparrowwallet.sparrow.ChainOnlyCoins;
 import com.sparrowwallet.sparrow.ChainTip;
 import com.sparrowwallet.sparrow.EventManager;
 import com.sparrowwallet.sparrow.event.*;
@@ -263,6 +264,7 @@ public class ElectrumServer {
         reorgInvalidatedScriptHashes.clear();
         proofWarnedPairs.clear();
         proofsShownFalseWarnedPairs.clear();
+        ChainOnlyCoins.forgetUnproven();
         walletSyncLocks.values().forEach(syncLock -> syncLock.scriptHashesInitialized = false);
     }
 
@@ -3843,6 +3845,129 @@ public class ElectrumServer {
                     }
 
                     return transactionMap;
+                }
+            };
+        }
+    }
+
+    /**
+     * Looks for proof that coins exist only on this chain, fetching the ancestry {@link ChainOnlyCoins} asks for.
+     *
+     * Every open wallet's transactions are used first, and only the keys of those that hold them can supply a proof:
+     * a watch only wallet's history is read, but its xpub proves nothing, being anyone's to hand over. The split the guide
+     * describes then needs nothing from the server at all: the consolidating wallet holds the transaction that
+     * created the coin, and the hot wallet that signed it holds that transaction's parent. The fetch budget bounds
+     * what a long ancestry outside the wallets can cost.
+     *
+     * One proven coin is enough for the transaction, so the look stops at the first. Coins still open when it stops
+     * for that reason are left unknown rather than recorded as unproven, since nobody finished looking at them.
+     * Coins still open when the budget or the depth runs out are recorded as unproven, which leaves the label as it
+     * was rather than asking again on every redraw, until a wallet opens or the server changes.
+     */
+    public static class ChainOnlyCoinsService extends Service<Set<Sha256Hash>> {
+        //One more round than generations, since the last round's fetch has to be read before anything is said about it
+        private static final int MAX_ROUNDS = ChainOnlyCoins.MAX_DEPTH + 2;
+        private static final int MAX_FETCHED = 100;
+        private static final long RETRY_AFTER_FAILURE_MILLIS = 60_000;
+
+        //A failed look leaves its coins unknown, and every redraw of the screens that ask would start another.
+        //Shared, because the server that failed is shared.
+        private static volatile long retryNotBefore;
+
+        private final Map<Sha256Hash, BlockTransaction> walletTransactions;
+        private final Set<Script> ownedScripts;
+        private final Set<Sha256Hash> creatingTxids;
+
+        /**
+         * Takes everything it needs from the open wallets now, on the application thread that changes them, so the
+         * look itself reads only its own copies.
+         */
+        public ChainOnlyCoinsService(Collection<Wallet> wallets, Set<Sha256Hash> creatingTxids) {
+            this.walletTransactions = new HashMap<>();
+            this.ownedScripts = new HashSet<>();
+            for(Wallet wallet : wallets) {
+                if(wallet == null) {
+                    continue;
+                }
+                for(Wallet each : wallet.isMasterWallet() ? concat(wallet, wallet.getChildWallets()) : List.of(wallet)) {
+                    this.walletTransactions.putAll(each.getWalletTransactions());
+                }
+                //History is read from every wallet, keys only from those that hold them. A master's scripts include
+                //its child accounts', which derive from the same keys
+                if(ChainOnlyCoins.holdsItsKeys(wallet)) {
+                    this.ownedScripts.addAll(wallet.getWalletOutputScripts().keySet());
+                }
+            }
+            this.creatingTxids = new LinkedHashSet<>(creatingTxids);
+        }
+
+        /**
+         * For the screens that ask: the wallets open in this app, which are the user's, together with the one the
+         * screen is showing in case it is not among them.
+         */
+        public static ChainOnlyCoinsService forOpenWallets(Wallet wallet, Set<Sha256Hash> creatingTxids) {
+            Set<Wallet> wallets = new LinkedHashSet<>(AppServices.get().getOpenWallets().keySet());
+            if(wallet != null) {
+                wallets.add(wallet);
+            }
+            return new ChainOnlyCoinsService(wallets, creatingTxids);
+        }
+
+        public static boolean isBackingOff() {
+            return System.currentTimeMillis() < retryNotBefore;
+        }
+
+        private static List<Wallet> concat(Wallet wallet, List<Wallet> childWallets) {
+            List<Wallet> all = new ArrayList<>(childWallets.size() + 1);
+            all.add(wallet);
+            all.addAll(childWallets);
+            return all;
+        }
+
+        @Override
+        protected void failed() {
+            retryNotBefore = System.currentTimeMillis() + RETRY_AFTER_FAILURE_MILLIS;
+            super.failed();
+        }
+
+        @Override
+        protected Task<Set<Sha256Hash>> createTask() {
+            return new Task<>() {
+                protected Set<Sha256Hash> call() throws ServerException {
+                    Map<Sha256Hash, BlockTransaction> known = new HashMap<>(retrievedTransactions);
+                    known.putAll(walletTransactions);
+
+                    Set<Sha256Hash> proven = new LinkedHashSet<>();
+                    Set<Sha256Hash> open = new LinkedHashSet<>(creatingTxids);
+                    int fetched = 0;
+                    for(int round = 0; round < MAX_ROUNDS && !open.isEmpty(); round++) {
+                        Set<Sha256Hash> missing = new LinkedHashSet<>();
+                        for(Sha256Hash txid : List.copyOf(open)) {
+                            ChainOnlyCoins.Proof proof = ChainOnlyCoins.prove(txid, known::get, ownedScripts::contains, Network.get());
+                            if(proof instanceof ChainOnlyCoins.Missing needed) {
+                                missing.addAll(needed.txids());
+                            } else {
+                                open.remove(txid);
+                                if(proof instanceof ChainOnlyCoins.Proven) {
+                                    proven.add(txid);
+                                    return proven;
+                                }
+                            }
+                        }
+
+                        missing.removeAll(known.keySet());
+                        if(missing.isEmpty() || fetched >= MAX_FETCHED || round == MAX_ROUNDS - 1) {
+                            break;
+                        }
+
+                        Set<Sha256Hash> request = missing.stream().limit(MAX_FETCHED - fetched).collect(Collectors.toCollection(LinkedHashSet::new));
+                        ElectrumServer electrumServer = new ElectrumServer();
+                        known.putAll(electrumServer.getReferencedTransactions(request, null));
+                        fetched += request.size();
+                    }
+
+                    ChainOnlyCoins.markUnproven(open);
+                    return proven;
                 }
             };
         }

@@ -2169,6 +2169,10 @@ public class AppServices {
 
     @Subscribe
     public void openWallets(OpenWalletsEvent event) {
+        //A wallet opened here can complete a proof that was left unfinished without it: its keys count, and its history
+        //is what the walk reads first
+        ChainOnlyCoins.forgetUnproven();
+
         if(event.getWalletTabDataList().isEmpty()) {
             List<WalletTabData> closedTabData = walletWindows.remove(event.getWindow());
             if(closedTabData != null && !closedTabData.isEmpty()) {

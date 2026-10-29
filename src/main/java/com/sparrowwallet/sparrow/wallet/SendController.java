@@ -170,6 +170,8 @@ public class SendController extends WalletFormController implements Initializabl
 
     private final ObjectProperty<WalletTransaction> walletTransactionProperty = new SimpleObjectProperty<>(null);
 
+    private ElectrumServer.ChainOnlyCoinsService chainOnlyCoinsService;
+
     private final BooleanProperty insufficientInputsProperty = new SimpleBooleanProperty(false);
 
     private final StringProperty utxoLabelSelectionProperty = new SimpleStringProperty("");
@@ -1132,6 +1134,25 @@ public class SendController extends WalletFormController implements Initializabl
 
         UnifiedSigHashDecision decision = AppServices.getUnifiedSigHashDecision(walletTransaction.getWallet());
         optInStatus.setVisible(true);
+
+        //A coin only this chain has protects the transaction whatever its signatures are, and it is the one way there
+        //for a wallet whose signer cannot opt in. Asked only where the decision alone would leave it unprotected, or
+        //protected only if the right signer signs: where the signatures settle it, a coin has nothing to add.
+        boolean decisionProtects = decision.isOptedIn() && decision != UnifiedSigHashDecision.OPTED_IN_IF_MARKED_SIGNS;
+        if(!decisionProtects) {
+            Set<Sha256Hash> creatingTxids = walletTransaction.getSelectedUtxos().keySet().stream()
+                    .map(BlockTransactionHashIndex::getHash).collect(Collectors.toCollection(LinkedHashSet::new));
+            Optional<ChainOnlyCoins.Proven> proven = ChainOnlyCoins.proven(creatingTxids);
+            if(proven.isPresent()) {
+                showChainOnlyCoin(proven.get());
+                return;
+            }
+
+            if(ChainOnlyCoins.status(creatingTxids) == ChainOnlyCoins.Status.UNKNOWN) {
+                checkChainOnlyCoins(walletTransaction.getWallet(), creatingTxids);
+            }
+        }
+
         //The reason is shown on the label and not only in the tooltip. "Not replay protected" on its own
         //reads as a fault in the wallet, when most of the time it is a question only the user can answer:
         //nothing a device reports says whether its firmware produces the opt-in. Someone who does not know
@@ -1165,6 +1186,50 @@ public class SendController extends WalletFormController implements Initializabl
                     + (decision.getRemedy() == null ? "" : System.lineSeparator() + System.lineSeparator() + decision.getRemedy()));
         tooltip.setShowDuration(Duration.INDEFINITE);
         optInStatus.setTooltip(tooltip);
+    }
+
+    /**
+     * Shows protection that comes from a coin being spent rather than from the signatures.
+     *
+     * Nothing about it is actionable, so the label is not, and the tooltip says the two things that would undo it:
+     * dropping the coin, here or in a fee bump, and the key behind the coin's own proof signing again elsewhere.
+     */
+    private void showChainOnlyCoin(ChainOnlyCoins.Proven proven) {
+        optInStatus.setText(UnifiedSigHashDecision.summaryFor(true) + ", because it spends a coin only this chain has");
+        optInStatus.setWrapText(true);
+        optInStatus.setGraphic(GlyphUtils.getSuccessGlyph());
+        optInStatus.getStyleClass().removeAll("actionable");
+        optInStatus.setCursor(Cursor.DEFAULT);
+        optInStatus.setOnMouseClicked(null);
+
+        Tooltip tooltip = new Tooltip("One of the coins this spends descends from transaction " + proven.txid()
+                + ", whose opted-in signature, made by one of your own wallets, is not valid under the pre-fork rules. That coin does not exist on the chain that kept SHA256d, "
+                + "so neither can any transaction spending it, whatever its own signatures are. The ordinary signatures this wallet makes commit to every input, "
+                + "so the coin cannot be taken out and the rest replayed. The transaction tab checks this again against the signature type it is signed with, "
+                + "since Anyone Can Pay, and Single on some inputs, would let an input be lifted out."
+                + System.lineSeparator() + System.lineSeparator()
+                + "Keep that coin in this transaction. Leaving it out, here or in a fee bump that replaces this transaction, leaves the rest unprotected."
+                + System.lineSeparator() + System.lineSeparator() + ChainOnlyCoins.CAVEAT);
+        tooltip.setShowDuration(Duration.INDEFINITE);
+        optInStatus.setTooltip(tooltip);
+    }
+
+    /**
+     * Looks for proof behind the coins this transaction spends, and redraws the status once it has an answer.
+     *
+     * One look at a time. A selection that changes while one runs is picked up by the redraw it triggers, since
+     * that asks about whatever is selected then, and every coin looked at is remembered either way.
+     */
+    private void checkChainOnlyCoins(Wallet wallet, Set<Sha256Hash> creatingTxids) {
+        if(!AppServices.isConnected() || ElectrumServer.ChainOnlyCoinsService.isBackingOff()
+                || (chainOnlyCoinsService != null && chainOnlyCoinsService.isRunning())) {
+            return;
+        }
+
+        chainOnlyCoinsService = ElectrumServer.ChainOnlyCoinsService.forOpenWallets(wallet, creatingTxids);
+        chainOnlyCoinsService.setOnSucceeded(event -> updateOptInStatus(walletTransactionProperty.get()));
+        chainOnlyCoinsService.setOnFailed(event -> log.debug("Could not look for coins only this chain has", chainOnlyCoinsService.getException()));
+        chainOnlyCoinsService.start();
     }
 
     /**

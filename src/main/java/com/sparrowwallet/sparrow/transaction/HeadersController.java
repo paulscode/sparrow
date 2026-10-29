@@ -15,6 +15,7 @@ import com.sparrowwallet.drongo.wallet.*;
 import com.sparrowwallet.hummingbird.UR;
 import com.sparrowwallet.hummingbird.registry.CryptoPSBT;
 import com.sparrowwallet.sparrow.AppServices;
+import com.sparrowwallet.sparrow.ChainOnlyCoins;
 import com.sparrowwallet.sparrow.EventManager;
 import com.sparrowwallet.sparrow.UnifiedSigHashDecision;
 import com.sparrowwallet.sparrow.UnitFormat;
@@ -230,6 +231,8 @@ public class HeadersController extends TransactionFormController implements Init
 
     @FXML
     private ComboBox<SigHash> sigHash;
+
+    private ElectrumServer.ChainOnlyCoinsService chainOnlyCoinsService;
 
     @FXML
     private VBox finalizeButtonBox;
@@ -1108,6 +1111,30 @@ public class HeadersController extends TransactionFormController implements Init
         boolean uncertain = counts.isUncertain();
         boolean everySignature = signatures > 0 && optedInSignatures == counts.verified() && counts.verified() == signatures;
 
+        //Where the signatures do not settle it, the inputs can: a coin only this chain has protects the transaction
+        //whatever its signatures carry. Unless one of them signs Anyone Can Pay, since that input commits to nothing
+        //else and can be lifted out on its own and spent on the chain that kept SHA256d.
+        PSBT psbt = headersForm.getPsbt();
+        if(psbt != null && !(optedIn && !uncertain)) {
+            Set<Sha256Hash> creatingTxids = psbt.getTransaction().getInputs().stream()
+                    .map(input -> input.getOutpoint().getHash()).collect(Collectors.toCollection(LinkedHashSet::new));
+            Optional<ChainOnlyCoins.Proven> proven = ChainOnlyCoins.proven(creatingTxids);
+            if(proven.isPresent() && !ChainOnlyCoins.anInputCanBeLifted(psbt, psbtSigHash)) {
+                for(Label label : List.of(signingWalletOptIn, signaturesOptIn)) {
+                    label.setText(UnifiedSigHashDecision.summaryFor(true));
+                    label.setGraphic(GlyphUtils.getSuccessGlyph());
+                    Tooltip tooltip = new Tooltip(chainOnlyCoinDetail(proven.get()));
+                    tooltip.setShowDuration(Duration.INDEFINITE);
+                    label.setTooltip(tooltip);
+                }
+                return;
+            }
+
+            if(ChainOnlyCoins.status(creatingTxids) == ChainOnlyCoins.Status.UNKNOWN) {
+                checkChainOnlyCoins(creatingTxids);
+            }
+        }
+
         for(Label label : List.of(signingWalletOptIn, signaturesOptIn)) {
             label.setText(uncertain ? UnifiedSigHashDecision.UNCHECKED_SUMMARY : UnifiedSigHashDecision.summaryFor(optedIn));
             label.setGraphic(optedIn && !uncertain ? GlyphUtils.getSuccessGlyph() : GlyphUtils.getWarningGlyph());
@@ -1115,6 +1142,30 @@ public class HeadersController extends TransactionFormController implements Init
                     ? uncheckedStatusDetail(counts)
                     : optedInStatusDetail(optedIn, everySignature, counts)));
         }
+    }
+
+    private static String chainOnlyCoinDetail(ChainOnlyCoins.Proven proven) {
+        return "Whatever its own signatures carry, this transaction spends a coin descended from transaction " + proven.txid()
+                + ", whose opted-in signature, made by one of your own wallets, is not valid under the pre-fork rules. That coin does not exist on the chain that kept SHA256d, "
+                + "so neither can this transaction. None of its signatures signs Anyone Can Pay, or Single on an input with no output of its own, "
+                + "so no input can be lifted out and replayed on its own."
+                + System.lineSeparator() + System.lineSeparator() + ChainOnlyCoins.CAVEAT;
+    }
+
+    /**
+     * Looks for proof behind the coins this transaction spends, and redraws the status once it has an answer.
+     */
+    private void checkChainOnlyCoins(Set<Sha256Hash> creatingTxids) {
+        if(!AppServices.isConnected() || ElectrumServer.ChainOnlyCoinsService.isBackingOff()
+                || (chainOnlyCoinsService != null && chainOnlyCoinsService.isRunning())) {
+            return;
+        }
+
+        Wallet wallet = headersForm.getSigningWallet() != null ? headersForm.getSigningWallet() : headersForm.getWallet();
+        chainOnlyCoinsService = ElectrumServer.ChainOnlyCoinsService.forOpenWallets(wallet, creatingTxids);
+        chainOnlyCoinsService.setOnSucceeded(event -> refreshOptInStatus());
+        chainOnlyCoinsService.setOnFailed(event -> log.debug("Could not look for coins only this chain has", chainOnlyCoinsService.getException()));
+        chainOnlyCoinsService.start();
     }
 
     /**
@@ -1521,6 +1572,19 @@ public class HeadersController extends TransactionFormController implements Init
             headersForm.getSignatureKeystoreMap().keySet().retainAll(signedKeystores.keySet());
             headersForm.getSignatureKeystoreMap().putAll(signedKeystores);
         });
+        //Every path that changes the signatures comes through here: signing, a combine, finalizing, and a change of
+        //signing wallet, which changes which signatures can be checked. The replay label reads those signatures, so
+        //it is read again rather than left saying what the declaration promised before anyone signed
+        refreshOptInStatus();
+    }
+
+    /**
+     * Reads the replay label again from the PSBT as it is now. Only a PSBT has one to read.
+     */
+    private void refreshOptInStatus() {
+        if(headersForm.getPsbt() != null) {
+            updateOptInStatus(sigHash.getValue());
+        }
     }
 
     private void finalizePSBT() {
@@ -2017,6 +2081,8 @@ public class HeadersController extends TransactionFormController implements Init
                 signButtonBox.setVisible(true);
                 event.getPsbt().addKeyPathInformation(event.getSigningWallet());
             }
+
+            refreshOptInStatus();
         }
     }
 

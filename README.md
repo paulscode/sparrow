@@ -44,7 +44,11 @@ explorer URL is still available. The update check is off, because its feed is up
 **It reports opt-in replay protection.** Replay protection on this chain is opt in, carried by the
 unified signature hash, so an ordinary transaction is valid on both chains. The transaction screen
 says whether the signatures actually opt in, and says "not checked" rather than guessing when it has
-no wallet to verify them against.
+no wallet to verify them against. A transaction that spends a coin only this chain has is protected whatever its
+signatures carry, and both screens say so once that coin's opted-in ancestor has been verified, provided that ancestor
+was signed by one of your own wallets open in the app: anyone else who holds that key could undo it.
+That is how a hardware wallet whose firmware cannot opt in gets split: see
+[Replay protection for a hardware wallet that can't sign the opt-in](docs/split-with-a-hardware-wallet.md).
 
 **It stores its files separately from upstream Sparrow**, so both can be installed at once. See
 [Configuration](#configuration) below.
