@@ -1546,7 +1546,7 @@ public class AppServices {
         return applyUnifiedSigHash(walletTransaction.createPSBT(), active);
     }
 
-    static PSBT applyUnifiedSigHash(PSBT psbt, boolean active) {
+    public static PSBT applyUnifiedSigHash(PSBT psbt, boolean active) {
         if(active) {
             for(PSBTInput psbtInput : psbt.getPsbtInputs()) {
                 SigHash sigHash = psbtInput.getSigHash();

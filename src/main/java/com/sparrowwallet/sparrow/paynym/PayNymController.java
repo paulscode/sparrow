@@ -572,7 +572,9 @@ public class PayNymController {
             byte[] blindedPaymentCode = PaymentCode.blind(paymentCode.getPayload(), blindingMask);
 
             WalletTransaction finalWalletTx = getWalletTransaction(decryptedWallet, payNym, blindedPaymentCode, walletTransaction.getSelectedUtxos().keySet());
-            PSBT psbt = finalWalletTx.createPSBT();
+            //Through AppServices, as every other send is, so it opts in where the wallet's decision is to: this wallet signs
+            //it with its own key, and without that the notification transaction was replayable on the other chain
+            PSBT psbt = AppServices.createPSBT(finalWalletTx);
             decryptedWallet.sign(psbt);
             decryptedWallet.finalise(psbt);
             Transaction transaction = psbt.extractTransaction();
