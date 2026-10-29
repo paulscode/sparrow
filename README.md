@@ -18,7 +18,7 @@ Verify them before installing:
 
 ```
 gpg --verify SHA256SUMS.asc SHA256SUMS
-sha256sum -c SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS
 ```
 
 Every release reports which build it is. Open About, or run it with `--version`.
@@ -85,7 +85,15 @@ When updating to the latest HEAD
 
 `git pull --recurse-submodules`
 
-Upstream's release binaries are reproducible from v1.5.0 onwards (pre codesigning and installer packaging), and the [instructions on reproducing the binaries](docs/reproducible.md) carry over. This fork's binaries are built by GitHub Actions from the tag, and reproducibility has not been verified independently.
+Upstream's release binaries are reproducible from v1.5.0 onwards (pre codesigning and installer packaging). Its
+[instructions on reproducing the binaries](docs/reproducible.md) apply to this fork with these substitutions:
+
+- Clone `https://github.com/paulscode/sparrow.git` and check out a tag of the form `v2.5.6-blake2b.7`.
+- The JDK: Eclipse Temurin 25.0.2+10 for 2.5.4-blake2b.1 to 2.5.6-blake2b.6, and 25.0.5+8 from 2.5.6-blake2b.7. The doc's
+  "v2.5.6 and later" means upstream's 2.5.6, which this fork's 2.5.6-blake2b.1 to .6 predate.
+- The built image is `build/jpackage/Sparrow BLAKE2b`, not `build/jpackage/Sparrow`.
+
+This fork's binaries are built by GitHub Actions from the tag, and reproducibility has not been verified independently.
 
 ## Merging upstream
 

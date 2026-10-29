@@ -139,8 +139,10 @@ public class MaturityEstimateTest {
 
         //A year, which is what part two of the deployment would mean, is the case that overflows
         assertTrue(("Immature " + MaturityEstimate.describeShort(52560)).length() > DateTableCell.UTXO_WIDTH);
-        //And six weeks, which is what it means today, is the case that fits
+        //And the two depths the schedule asks for today, six weeks for rewards mined before 979919 and six months from it,
+        //are cases that fit
         assertTrue(("Immature " + MaturityEstimate.describeShort(6480)).length() <= DateTableCell.UTXO_WIDTH);
+        assertTrue(("Immature " + MaturityEstimate.describeShort(25920)).length() <= DateTableCell.UTXO_WIDTH);
     }
 
 }

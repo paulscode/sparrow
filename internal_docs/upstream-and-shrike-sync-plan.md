@@ -111,6 +111,9 @@ header version. Use `blockHeader.getHash()` instead (shrike 69ecf14). Nothing in
 - Real headers 961632–961641 are accepted end to end. Shrike has these in drongo
   `src/test/resources/headers/mainnet-activation.txt`, and they have been checked to link under our
   hashing. Port that file and Shrike's `testnet4_v2_headers.tsv` as ground truth.
+  *(Correction, 2026-10-29: only the mainnet file was ported. Shrike's testnet4 file holds v2 headers at
+  149460-149564, below the 150308 that Knots v29.4.3 sets for testnet4: it is from an earlier release
+  candidate's testnet4 chain, and the version rule would rightly refuse it.)*
 
 **Release note.** Existing header stores were verified without this rule. `HeaderStore.load`
 re-verifies from the anchor on every load, so a store with a v1 header above the fork is discarded
@@ -603,7 +606,9 @@ activation height) plainly, so the two clients converge.
 **The client.** The same issue reports two failures with servers other than Fulcrum, and both apply to
 us:
 
-- A reply with no `jsonrpc` field is silently dropped, and the client retries forever.
+- A reply with no `jsonrpc` field is silently dropped, and the client retries forever. *(For this client, as
+  checked in review: the reply is refused as "Not a JSON-RPC response" and retried five times, then reported as
+  "Retries exhausted". Fixed by failing once with an unchecked `ServerProtocolException` naming the server.)*
 - Requests are batched as a JSON array; a server that answers only the first object looks hung.
 
 Neither is a safety issue. Both make a misbehaving server look like a hang, not an error. Reproduce
@@ -827,9 +832,26 @@ That work was reviewed adversarially on 2026-10-15, and the gaps found were fixe
 These were left:
 
 - **Watch-only wallets.** Decided in item 17; the follow-up is item 18.
-- **Tapscript signatures** aren't visible to `anInputCanBeLifted` before finalizing, because drongo drops
-  `PSBT_IN_TAP_SCRIPT_SIG` at parse. This goes away with the 065a256 port in item 7.
-- **Final transactions** get no chain-only check (item 4).
+- **Tapscript signatures** weren't visible to `anInputCanBeLifted` before finalizing, because drongo dropped
+  `PSBT_IN_TAP_SCRIPT_SIG` at parse. The 065a256 port only kept them; the review of 2026-10-29 found that was not
+  enough. `PSBTInput.getDecodedTapScriptSignatures` now feeds both the lifted check and the opt-in counts.
+- **Final transactions** now get a chain-only check (item 4), and are called not protected only once that check
+  has finished.
+
+### Found in the review of everything for 2.5.6-blake2b.7 (2026-10-29), and fixed
+
+- A new udev test asserted Linux paths, which would fail on the Windows release runner and stop the Windows build.
+- The Electrum protocol errors were thrown as IOException, which the JSON-RPC client wraps into the type the RPC
+  layer retries, so they were retried five times and reported as "Retries exhausted".
+- A legacy input in a segwit-format transaction was read from the empty witness it is given there, and read as
+  unsigned (an upstream bug that upstream's new unconfirmed check would act on).
+- A missing UTXO elsewhere escaped `verifySignatures` as an IllegalArgumentException; taproot 0x20 passed as ALL.
+- The send screen did not redraw when a wallet opened, so the guide's step 5 remedy looked as if it had failed.
+- The final-transaction label warned about no liftable signatures, and said "can be replayed" before the
+  chain-only lookup had finished.
+- The RDTS refusal ran after extraction and claimed the transaction was valid on the other chain whatever it was.
+- The release workflow ran lark's device enumeration test on runners it had never run on; it runs only in the
+  test workflow now.
 - **Cost.** `verifiesOptedIn` recomputes the unified message's aggregates for every input, which is
   quadratic on very large ancestors. It runs on a background thread, so only CPU is spent.
 - **Proofs only survive a restart for 6 generations** (`MAX_DEPTH`). The guide tells large-wallet users

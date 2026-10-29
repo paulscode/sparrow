@@ -456,7 +456,11 @@ tasks.register('removeGroupWritePermission', Exec) {
 // The release this build reports itself as, e.g. 2.5.6-blake2b.7. The upstream base alone named every artifact of every
 // release on one base identically, so a download said nothing about which release it was. Read from the one place the
 // app reports it from, so the two cannot disagree. After Shrike #51.
-def releaseSuffix = (file('src/main/java/com/sparrowwallet/sparrow/SparrowWallet.java').text =~ /APP_VERSION_SUFFIX = "([^"]*)"/)[0][1]
+def releaseSuffixMatcher = file('src/main/java/com/sparrowwallet/sparrow/SparrowWallet.java').text =~ /APP_VERSION_SUFFIX = "([^"]*)"/
+if(!releaseSuffixMatcher.find()) {
+    throw new GradleException("APP_VERSION_SUFFIX not found in SparrowWallet.java, which the release artifacts are named from")
+}
+def releaseSuffix = releaseSuffixMatcher.group(1)
 def releaseVersion = "${version}${releaseSuffix}"
 
 tasks.register('packageZipDistribution', Zip) {
