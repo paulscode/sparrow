@@ -5,6 +5,7 @@ import com.sparrowwallet.drongo.Network;
 import com.sparrowwallet.drongo.policy.PolicyType;
 import com.sparrowwallet.sparrow.io.Server;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -74,7 +75,9 @@ public enum PublicElectrumServer {
      */
     public static List<PublicElectrumServer> getServers() {
         if(!supportedNetwork()) {
-            return List.of();
+            //Not List.of(), whose indexOf(null) throws: the server settings combo box is filled from this list and has
+            //its value set to null, there being no configured public server, and looks that up. As Shrike #85.
+            return new ArrayList<>();
         }
 
         return Arrays.stream(values()).filter(server -> server.network == Network.get()).collect(Collectors.toList());

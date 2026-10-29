@@ -54,6 +54,8 @@ public class Sha256SourcesWithdrawnTest {
                 "no public server indexes this chain");
         Assertions.assertEquals(List.of(), PublicElectrumServer.getServers(),
                 "getServers must honour the gate, since callers index into it");
+        Assertions.assertEquals(-1, PublicElectrumServer.getServers().indexOf(null),
+                "the server settings combo box looks up an empty selection in this list, which List.of() answers by throwing");
     }
 
     /**
