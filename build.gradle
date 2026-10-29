@@ -453,8 +453,14 @@ tasks.register('removeGroupWritePermission', Exec) {
     commandLine 'chmod', '-R', 'g-w', "$buildDir/jpackage/${appImageName}"
 }
 
+// The release this build reports itself as, e.g. 2.5.6-blake2b.7. The upstream base alone named every artifact of every
+// release on one base identically, so a download said nothing about which release it was. Read from the one place the
+// app reports it from, so the two cannot disagree. After Shrike #51.
+def releaseSuffix = (file('src/main/java/com/sparrowwallet/sparrow/SparrowWallet.java').text =~ /APP_VERSION_SUFFIX = "([^"]*)"/)[0][1]
+def releaseVersion = "${version}${releaseSuffix}"
+
 tasks.register('packageZipDistribution', Zip) {
-    archiveFileName = "Sparrow-BLAKE2b-${version}.zip"
+    archiveFileName = "Sparrow-BLAKE2b-${releaseVersion}.zip"
     destinationDirectory = file("$buildDir/jpackage")
     preserveFileTimestamps = os.macOsX
     from("$buildDir/jpackage/") {
@@ -465,7 +471,7 @@ tasks.register('packageZipDistribution', Zip) {
 
 tasks.register('packageTarDistribution', Tar) {
     dependsOn removeGroupWritePermission
-    archiveFileName = "sparrow${headless ? 'server': 'wallet'}-blake2b-${version}-${releaseArch}.tar.gz"
+    archiveFileName = "sparrow${headless ? 'server': 'wallet'}-blake2b-${releaseVersion}-${releaseArch}.tar.gz"
     destinationDirectory = file("$buildDir/jpackage")
     compression = Compression.GZIP
     from("$buildDir/jpackage/") {

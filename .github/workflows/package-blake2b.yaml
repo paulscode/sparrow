@@ -62,6 +62,8 @@ jobs:
 
       # jpackage names the .dmg from installerName and version alone, so both macOS jobs would
       # otherwise emit the same filename and the second would overwrite the first on the release.
+      # jpackage's version is the upstream base, which cannot carry the release suffix, so the name
+      # takes the release the app reports, from the same constant the zip and tar names read.
       - name: Name the macOS disk image for its architecture
         if: ${{ runner.os == 'macOS' }}
         shell: bash
@@ -71,7 +73,9 @@ jobs:
           dmg=$(find build/jpackage -maxdepth 1 -name '*.dmg' | head -1)
           [ -n "$dmg" ] || { echo "no .dmg produced"; ls -la build/jpackage; exit 1; }
           version=$(basename "$dmg" .dmg | sed 's/^.*-//')
-          mv "$dmg" "build/jpackage/Sparrow-BLAKE2b-${version}-${arch}.dmg"
+          suffix=$(sed -n 's/.*APP_VERSION_SUFFIX = "\([^"]*\)";.*/\1/p' src/main/java/com/sparrowwallet/sparrow/SparrowWallet.java)
+          [ -n "$suffix" ] || { echo "no APP_VERSION_SUFFIX found"; exit 1; }
+          mv "$dmg" "build/jpackage/Sparrow-BLAKE2b-${version}${suffix}-${arch}.dmg"
           ls -la build/jpackage/*.dmg
 
       - name: Upload artifact
