@@ -1591,12 +1591,82 @@ public class HeadersController extends TransactionFormController implements Init
     }
 
     /**
-     * Reads the replay label again from the PSBT as it is now. Only a PSBT has one to read.
+     * Reads the replay label again from the transaction as it is now: a PSBT from its signatures, a final transaction
+     * that has not been mined from what can be verified of it. A mined one shows the blockchain form instead.
      */
     private void refreshOptInStatus() {
         if(headersForm.getPsbt() != null) {
             updateOptInStatus(sigHash.getValue());
+        } else if(headersForm.getBlockTransaction() == null && headersForm.getTransaction() != null) {
+            updateFinalOptInStatus();
         }
+    }
+
+    /**
+     * The replay label for a final transaction, which has no PSBT to read a declaration from.
+     *
+     * Protected only on evidence: an opted-in signature that verifies under a key of the wallet showing it, or a coin
+     * only this chain has, with nothing signed in a way that lets an input be lifted out. Not protected only where every
+     * input is the wallet's and each was checked and none opted in. Anything short of either is not checked, and the
+     * label says how to check it, rather than going blank as it did.
+     */
+    private void updateFinalOptInStatus() {
+        Transaction transaction = headersForm.getTransaction();
+        Wallet wallet = headersForm.getSigningWallet() != null ? headersForm.getSigningWallet() : headersForm.getWallet();
+
+        boolean verifiedOptIn = false;
+        boolean everyInputCheckedWithoutOptIn = false;
+        if(wallet != null) {
+            try {
+                Map<TransactionInput, Map<TransactionSignature, Keystore>> signed = wallet.getSignedKeystores(transaction);
+                verifiedOptIn = signed.values().stream().flatMap(signatures -> signatures.keySet().stream())
+                        .anyMatch(signature -> (signature.sighashFlags & SigHash.UNIFIED_FLAG) != 0);
+                everyInputCheckedWithoutOptIn = !verifiedOptIn && signed.size() == transaction.getInputs().size()
+                        && signed.values().stream().noneMatch(Map::isEmpty);
+            } catch(RuntimeException e) {
+                log.debug("Could not check the signatures of " + transaction.getTxId(), e);
+            }
+        }
+
+        String text;
+        boolean protectedNow;
+        String detail;
+        if(verifiedOptIn) {
+            text = UnifiedSigHashDecision.summaryFor(true);
+            protectedNow = true;
+            detail = "At least one of its signatures, made by a key of this wallet and checked against it, is not valid under the pre-fork rules, so it cannot be replayed against nodes that have not adopted the fork.";
+        } else {
+            Set<Sha256Hash> creatingTxids = transaction.getInputs().stream().map(input -> input.getOutpoint().getHash())
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            Optional<ChainOnlyCoins.Proven> proven = ChainOnlyCoins.proven(creatingTxids);
+            if(proven.isPresent() && !ChainOnlyCoins.anInputCanBeLifted(transaction)) {
+                text = UnifiedSigHashDecision.summaryFor(true);
+                protectedNow = true;
+                detail = chainOnlyCoinDetail(proven.get());
+            } else {
+                if(proven.isEmpty() && ChainOnlyCoins.status(creatingTxids) == ChainOnlyCoins.Status.UNKNOWN) {
+                    checkChainOnlyCoins(creatingTxids);
+                }
+                protectedNow = false;
+                if(everyInputCheckedWithoutOptIn) {
+                    text = UnifiedSigHashDecision.summaryFor(false);
+                    detail = "Every input is this wallet's, each signature was checked, and none opts in. These signatures are made the way they always have been, so this transaction can be replayed on the chain that kept SHA256d.";
+                } else {
+                    text = UnifiedSigHashDecision.UNCHECKED_SUMMARY;
+                    detail = "A final transaction carries no declaration to read, so replay protection can only be shown by checking its signatures against the keys that made them, and this wallet could not check them all."
+                            + System.lineSeparator() + System.lineSeparator()
+                            + "Open the transaction with the wallet that signed it to check. It is also protected if it spends a coin only this chain has, which is looked for once the server can supply that coin's history.";
+                }
+            }
+        }
+
+        signaturesOptIn.setText(text);
+        signaturesOptIn.setGraphic(protectedNow ? GlyphUtils.getSuccessGlyph() : GlyphUtils.getWarningGlyph());
+        Tooltip tooltip = new Tooltip(detail);
+        tooltip.setShowDuration(Duration.INDEFINITE);
+        tooltip.setWrapText(true);
+        tooltip.setMaxWidth(640);
+        signaturesOptIn.setTooltip(tooltip);
     }
 
     private void finalizePSBT() {
@@ -1962,6 +2032,8 @@ public class HeadersController extends TransactionFormController implements Init
                 }
             }
 
+            refreshOptInStatus();
+
             if(headersForm.getSigningWallet() == null) {
                 signaturesProgressBar.initialize(signatureKeystoreMap, signatureKeystoreMap.size());
             }
@@ -2303,6 +2375,9 @@ public class HeadersController extends TransactionFormController implements Init
         broadcastProgressBar.setDisable(false);
         if(headersForm.getBlockTransaction() != null) {
             updateBlockchainForm(headersForm.getBlockTransaction(), event.getBlockHeight());
+        } else if(signaturesForm.isVisible() || signingWalletForm.isVisible()) {
+            //The chain-only coins lookup needs a server, so a label drawn offline is drawn again once there is one
+            refreshOptInStatus();
         }
     }
 

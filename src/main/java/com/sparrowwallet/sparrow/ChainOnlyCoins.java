@@ -391,6 +391,26 @@ public final class ChainOnlyCoins {
         return false;
     }
 
+    /**
+     * As {@link #anInputCanBeLifted(PSBT, SigHash)}, for a final transaction, read off the signatures in its witnesses
+     * and script sigs. Any push that decodes as one counts, checked or not, since this only ever withholds a claim.
+     */
+    public static boolean anInputCanBeLifted(Transaction transaction) {
+        int outputs = transaction.getOutputs().size();
+        List<TransactionInput> inputs = transaction.getInputs();
+        for(int i = 0; i < inputs.size(); i++) {
+            TransactionInput input = inputs.get(i);
+            List<TransactionSignature> signatures = input.hasWitness() ? input.getWitness().getSignatures() : input.getScriptSig().getSignatures();
+            for(TransactionSignature signature : signatures) {
+                if(liftable(signature.sighashFlags, i >= outputs)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     private static boolean liftable(SigHash sigHash, boolean noOutputAtIndex) {
         return sigHash != null && liftable(sigHash.value, noOutputAtIndex);
     }

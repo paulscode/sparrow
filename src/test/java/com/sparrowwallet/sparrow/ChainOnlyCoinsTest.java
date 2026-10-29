@@ -307,6 +307,29 @@ public class ChainOnlyCoinsTest {
         Assertions.assertTrue(ChainOnlyCoins.anInputCanBeLifted(declared, SigHash.ALL), "the input without one may not");
     }
 
+    /** A final transaction is read off its witnesses: Anyone Can Pay anywhere, or Single without an output of its own. */
+    @Test
+    public void aFinalTransactionWithALiftableInputWithholdsTheClaim() {
+        ECKey key = new ECKey();
+        Sha256Hash digest = Sha256Hash.twiceOf(new byte[] {9});
+
+        Transaction ordinary = twoInputsOneOutput(key, digest, SigHash.ALL, SigHash.ALL);
+        Assertions.assertFalse(ChainOnlyCoins.anInputCanBeLifted(ordinary));
+        Assertions.assertTrue(ChainOnlyCoins.anInputCanBeLifted(twoInputsOneOutput(key, digest, SigHash.ALL, SigHash.ANYONECANPAY_ALL)), "Anyone Can Pay");
+        Assertions.assertTrue(ChainOnlyCoins.anInputCanBeLifted(twoInputsOneOutput(key, digest, SigHash.ALL, SigHash.SINGLE)), "Single on the input with no output");
+        Assertions.assertFalse(ChainOnlyCoins.anInputCanBeLifted(twoInputsOneOutput(key, digest, SigHash.SINGLE, SigHash.ALL)), "Single on the input that has one");
+    }
+
+    private static Transaction twoInputsOneOutput(ECKey key, Sha256Hash digest, SigHash first, SigHash second) {
+        Transaction tx = new Transaction();
+        tx.addInput(Sha256Hash.twiceOf(new byte[] {10}), 0, new Script(new byte[0]));
+        tx.addInput(Sha256Hash.twiceOf(new byte[] {11}), 0, new Script(new byte[0]));
+        tx.addOutput(90000, p2wpkh(new ECKey()));
+        tx.getInputs().get(0).setWitness(new TransactionWitness(tx, key, key.sign(digest, first, TransactionSignature.Type.ECDSA)));
+        tx.getInputs().get(1).setWitness(new TransactionWitness(tx, key, key.sign(digest, second, TransactionSignature.Type.ECDSA)));
+        return tx;
+    }
+
     /**
      * A watch only wallet is an xpub, which someone making their own opt-in pass for the user's would hand over to be
      * imported. A seed, its PayNym accounts and a device are keys the user signs with.
