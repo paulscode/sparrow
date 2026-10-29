@@ -5,6 +5,7 @@ import com.sparrowwallet.drongo.SecureString;
 import com.sparrowwallet.drongo.Utils;
 import com.sparrowwallet.drongo.address.Address;
 import com.sparrowwallet.drongo.policy.PolicyType;
+import com.sparrowwallet.drongo.Network;
 import com.sparrowwallet.drongo.protocol.*;
 import com.sparrowwallet.drongo.psbt.*;
 import com.sparrowwallet.drongo.silentpayments.InvalidSilentPaymentException;
@@ -1710,6 +1711,21 @@ public class HeadersController extends TransactionFormController implements Init
         broadcastButton.setDisable(true);
         if(headersForm.getPsbt() != null) {
             if(!extractTransaction()) {
+                broadcastButton.setDisable(false);
+                broadcastButton.requestFocus();
+                return;
+            }
+        }
+
+        //A transaction this chain's rules refuse is one this wallet did not build, since everything it builds is within
+        //them. Said plainly here rather than left to the server's rejection, because the same transaction is valid on the
+        //chain that kept SHA256d, and broadcast there it moves those coins instead.
+        if(ReducedDataRules.isActive(Network.get(), System.currentTimeMillis() / 1000)) {
+            List<String> violations = ReducedDataRules.outputViolations(headersForm.getTransaction());
+            if(!violations.isEmpty()) {
+                AppServices.showErrorDialog("Not valid on this chain", String.join(".\n", violations) + "."
+                        + "\n\nThis chain enforces the RDTS output size limits until September 2027, and the chain that kept SHA256d does not, so this transaction "
+                        + "can never confirm here. It is valid there, though: broadcast on that chain, it would move the coins this transaction spends on it.");
                 broadcastButton.setDisable(false);
                 broadcastButton.requestFocus();
                 return;
