@@ -151,6 +151,6 @@ public class TcpTransportTimeoutTest {
     }
 
     private static String pingResponse(int id) {
-        return "{\"id\":" + id + ",\"result\":null}";
+        return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":null}";
     }
 }

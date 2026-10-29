@@ -109,10 +109,25 @@ public class TcpTransport implements CloseableTransport, TimeoutCounter {
             do {
                 recv = readResponse();
                 recvIdSet = extractIdSet(recv);
+                //Ids are unique to a request, so a reply naming some of this request's ids and not all of them is this
+                //request's, answered in part: a server that handles only the first object of a batch. Discarded as stale,
+                //it was waited out as though the server had gone silent, retried with ever longer timeouts, and read as a
+                //hang. Said as what it is instead.
+                if(!recvIdSet.isEmpty() && sentIdSet.containsAll(recvIdSet) && recvIdSet.size() < sentIdSet.size()) {
+                    throw new IOException("Server " + server + " answered " + recvIdSet.size() + " of the " + sentIdSet.size()
+                            + " requests sent together, so it does not support JSON-RPC batching");
+                }
                 if(!sentIdSet.equals(recvIdSet)) {
                     log.info("Discarding stale response with ids " + recvIdSet + " (expected " + sentIdSet + ")");
                 }
             } while(!sentIdSet.equals(recvIdSet));
+
+            //The client refuses a reply without the version field as "Not a JSON-RPC response", which the RPC layer takes for a
+            //transient failure and retries until it gives up with nothing to say why. A server that leaves it out leaves it
+            //out every time, so this fails once and says so.
+            if(!JSONRPC_VERSION_FIELD.matcher(recv).find()) {
+                throw new IOException("Server " + server + " replied without the \"jsonrpc\": \"2.0\" field JSON-RPC 2.0 requires");
+            }
 
             return recv;
         } finally {
@@ -401,6 +416,8 @@ public class TcpTransport implements CloseableTransport, TimeoutCounter {
             return false;
         }
     }
+
+    private static final Pattern JSONRPC_VERSION_FIELD = Pattern.compile("\"jsonrpc\"\\s*:\\s*\"2\\.0\"");
 
     private static Set<String> extractIdSet(String json) {
         if(json == null || json.isEmpty()) {
