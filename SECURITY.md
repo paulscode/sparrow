@@ -38,7 +38,7 @@ Fixes for serious issues are generally released as soon as they are ready, rathe
 
 ### Disclosure
 
-Sparrow follows the [Bitcoin Core Security Disclosure Policy](https://bitcoincore.org/en/security-advisories/). Reports are assigned one of four severity levels, which determines when details are made public:
+Reports are assigned one of four severity levels, which determines when details are made public:
 
 | Severity | Description | Disclosure                                  |
 | --- | --- |---------------------------------------------|
@@ -55,13 +55,13 @@ For Medium and High severity issues, the advisory is published once the disclosu
 
 Please give us the opportunity to release a fix before disclosing the issue publicly. If you intend to disclose on a timeline of your own, say so in your report so it can be discussed early.
 
-There is currently no bug bounty programme for Sparrow.
+There is currently no bug bounty programme for this fork.
 
 ## Supported Versions
 
 Security fixes are made against the latest release only. Users are encouraged to run the most recent version, available from this repository's [releases](https://github.com/paulscode/sparrow/releases) page. Releases of this fork are not distributed by sparrowwallet.com.
 
-Release binaries are signed with the GPG key above. Verifying the signature on a download before installing is strongly recommended. Upstream's binaries are reproducible from source from v1.5.0 onwards and the [instructions](docs/reproducible.md) carry over, but this fork's binaries are built by GitHub Actions from the tag and reproducibility has not been verified independently.
+Release binaries are signed with the GPG key above. Verifying the signature on a download before installing is strongly recommended. Upstream's binaries are reproducible from source from v1.5.0 onwards, and the README says how its [instructions](docs/reproducible.md) apply to this fork, but this fork's binaries are built by GitHub Actions from the tag and reproducibility has not been verified independently.
 
 ## Scope
 
