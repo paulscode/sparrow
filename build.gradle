@@ -344,13 +344,16 @@ if(os.macOsX) {
     tasks.jpackage.dependsOn('patchLauncherUuid')
 }
 
-// Give the launcher a Sparrow LC_UUID, since the stock jpackage launcher shares its Mach-O UUID with every app packaged by the same JDK
+// Give the launcher an LC_UUID of its own, since the stock jpackage launcher shares its Mach-O UUID with every app packaged by the same JDK.
+// Seeded from this fork's bundle identifier, not upstream's: seeding it from com.sparrowwallet.sparrow would give this build upstream
+// Sparrow's UUID, which is the collision the task exists to remove (macOS uses it to tell apps apart, e.g. in Local Network privacy).
+// The bundle and launcher names are this fork's too: appImageName, and the 'sparrow' launcher Info.plist names as CFBundleExecutable.
 tasks.register('patchLauncherUuid') {
     dependsOn tasks.jpackageImage
-    def appDir = layout.buildDirectory.dir('jpackage/Sparrow.app').get().asFile
-    def launcherUuid = UUID.nameUUIDFromBytes("com.sparrowwallet.sparrow.${osArch}".getBytes('UTF-8'))
+    def appDir = layout.buildDirectory.dir("jpackage/${appImageName}.app").get().asFile
+    def launcherUuid = UUID.nameUUIDFromBytes("com.paulscode.sparrowblake2b.${osArch}".getBytes('UTF-8'))
     doLast {
-        def launcher = new File(appDir, 'Contents/MacOS/Sparrow')
+        def launcher = new File(appDir, 'Contents/MacOS/sparrow')
         byte[] bytes = launcher.bytes
         def buffer = java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN)
         if(Integer.toUnsignedLong(buffer.getInt(0)) != 0xfeedfacfL) {
