@@ -32,16 +32,6 @@
                 <Label text="The status bar at the bottom displays the connection status, as demonstrated below:" wrapText="true" styleClass="content-text" />
             </VBox>
             <VBox fx:id="step2" spacing="15">
-                <Label text="Connecting to a Public Server" styleClass="title-text">
-                    <graphic>
-                        <Glyph fontFamily="Font Awesome 5 Free Solid" fontSize="20" icon="TOGGLE_ON" styleClass="title-icon" />
-                    </graphic>
-                </Label>
-                <Label text="If you are beginning your journey in self custody, or just storing a small amount, the easiest way to connect Sparrow to the Bitcoin blockchain is via one of the preconfigured public Electrum servers. " wrapText="true" styleClass="content-text" />
-                <Label text="However, although Sparrow only connects to servers that have a record of respecting privacy, it is still not ideal as you are sharing your transaction history and balance with them." wrapText="true" styleClass="content-text" />
-                <Label text="A yellow toggle means you are connected to a public server." wrapText="true" styleClass="content-text" />
-            </VBox>
-            <VBox fx:id="step3" spacing="15">
                 <Label text="Connecting to a Bitcoin Core node" styleClass="title-text">
                     <graphic>
                         <Glyph fontFamily="Font Awesome 5 Free Solid" fontSize="20" icon="TOGGLE_ON" styleClass="title-icon" />
@@ -51,7 +41,7 @@
                 <Label text="This means you are not sharing your transaction data, but be aware Bitcoin Core stores your balance, transactions and public keys unencrypted on that node, which is not ideal for true cold storage." wrapText="true" styleClass="content-text" />
                 <Label text="A green toggle means you are connected to a Bitcoin Core node." wrapText="true" styleClass="content-text" />
             </VBox>
-            <VBox fx:id="step4" spacing="15">
+            <VBox fx:id="step3" spacing="15">
                 <Label text="Connecting to a Private Electrum Server" styleClass="title-text">
                     <graphic>
                         <Glyph fontFamily="Font Awesome 5 Free Solid" fontSize="20" icon="TOGGLE_ON" styleClass="title-icon" />
