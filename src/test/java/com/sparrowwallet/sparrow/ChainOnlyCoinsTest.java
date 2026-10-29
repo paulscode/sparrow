@@ -5,6 +5,7 @@ import com.sparrowwallet.drongo.Utils;
 import com.sparrowwallet.drongo.crypto.ECKey;
 import com.sparrowwallet.drongo.protocol.*;
 import com.sparrowwallet.drongo.psbt.PSBT;
+import com.sparrowwallet.drongo.psbt.PSBTInput;
 import com.sparrowwallet.drongo.wallet.BlockTransaction;
 import com.sparrowwallet.drongo.wallet.Keystore;
 import com.sparrowwallet.drongo.wallet.KeystoreSource;
@@ -307,6 +308,45 @@ public class ChainOnlyCoinsTest {
         Assertions.assertTrue(ChainOnlyCoins.anInputCanBeLifted(declared, SigHash.ALL), "the input without one may not");
     }
 
+    /**
+     * A taproot script path signature is not among PSBTInput.getSignatures, so a foreign signer's Anyone Can Pay one went
+     * unseen, and a transaction whose other input spends a proven coin read as protected with a liftable input in it.
+     */
+    @Test
+    public void aTapscriptSignatureThatCanBeLiftedWithholdsTheClaim() throws Exception {
+        Transaction tx = new Transaction();
+        tx.addInput(Sha256Hash.twiceOf(new byte[] {12}), 0, new Script(new byte[0]));
+        tx.addOutput(90000, p2wpkh(new ECKey()));
+
+        byte[] keyData = Utils.hexToBytes("aa".repeat(32) + "bb".repeat(32));
+        byte[] key = new byte[1 + keyData.length];
+        key[0] = PSBTInput.PSBT_IN_TAP_SCRIPT_SIG;
+        System.arraycopy(keyData, 0, key, 1, keyData.length);
+        byte[] signature = new byte[65];
+        Arrays.fill(signature, (byte)0x33);
+        signature[64] = SigHash.ANYONECANPAY_ALL.byteValue();
+
+        //Written into the serialized form at the start of the input map: past the magic, the global entries and the global
+        //map's terminator
+        byte[] bare = new PSBT(tx).serialize();
+        int position = 5;
+        while(bare[position] != 0) {
+            position = skipCompactSized(bare, skipCompactSized(bare, position));
+        }
+        position++;
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        out.write(bare, 0, position);
+        out.write(key.length);
+        out.writeBytes(key);
+        out.write(signature.length);
+        out.writeBytes(signature);
+        out.write(bare, position, bare.length - position);
+        byte[] withEntry = out.toByteArray();
+        PSBT psbt = new PSBT(withEntry);
+        Assertions.assertEquals(1, psbt.getPsbtInputs().getFirst().getTapScriptSignatures().size(), "the entry must have been read");
+        Assertions.assertTrue(ChainOnlyCoins.anInputCanBeLifted(psbt, null));
+    }
+
     /** A final transaction is read off its witnesses: Anyone Can Pay anywhere, or Single without an output of its own. */
     @Test
     public void aFinalTransactionWithALiftableInputWithholdsTheClaim() {
@@ -318,6 +358,16 @@ public class ChainOnlyCoinsTest {
         Assertions.assertTrue(ChainOnlyCoins.anInputCanBeLifted(twoInputsOneOutput(key, digest, SigHash.ALL, SigHash.ANYONECANPAY_ALL)), "Anyone Can Pay");
         Assertions.assertTrue(ChainOnlyCoins.anInputCanBeLifted(twoInputsOneOutput(key, digest, SigHash.ALL, SigHash.SINGLE)), "Single on the input with no output");
         Assertions.assertFalse(ChainOnlyCoins.anInputCanBeLifted(twoInputsOneOutput(key, digest, SigHash.SINGLE, SigHash.ALL)), "Single on the input that has one");
+    }
+
+    /** Past a compact size length and the bytes it counts. */
+    private static int skipCompactSized(byte[] bytes, int position) {
+        int first = bytes[position] & 0xff;
+        if(first < 0xfd) {
+            return position + 1 + first;
+        }
+        int length = (bytes[position + 1] & 0xff) | ((bytes[position + 2] & 0xff) << 8);
+        return position + 3 + length;
     }
 
     private static Transaction twoInputsOneOutput(ECKey key, Sha256Hash digest, SigHash first, SigHash second) {

@@ -1923,6 +1923,18 @@ public class SendController extends WalletFormController implements Initializabl
             feeRange.updateFeeRange(event.getMinimumRelayFeeRate(), event.getPreviousMinimumRelayFeeRate());
             updateTransaction();
         }
+        //The chain-only coins lookup needs a server, so a label drawn offline is drawn again once there is one
+        Platform.runLater(() -> updateOptInStatus(walletTransactionProperty.get()));
+    }
+
+    /**
+     * A wallet opened can complete a proof that a coin exists only on this chain, and opening the hot wallet that signed
+     * it is what the guide tells a user whose consolidation reads as not protected to do. So the label is drawn again,
+     * on the next pulse, after AppServices has forgotten which coins were left unproven without it.
+     */
+    @Subscribe
+    public void openWallets(OpenWalletsEvent event) {
+        Platform.runLater(() -> updateOptInStatus(walletTransactionProperty.get()));
     }
 
     @Subscribe

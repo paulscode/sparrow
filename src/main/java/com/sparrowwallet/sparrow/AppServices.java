@@ -1246,7 +1246,11 @@ public class AppServices {
         List<PSBTInput> psbtInputs = psbt.getPsbtInputs();
         for(int i = 0; i < psbtInputs.size(); i++) {
             PSBTInput psbtInput = psbtInputs.get(i);
-            Collection<TransactionSignature> candidates = psbtInput.getSignatures();
+            //Taproot script path signatures are counted as present, and read for whether they can be lifted, but never as
+            //verified: the leaf script that would check them is not parsed. An input carrying only those therefore reads as
+            //unchecked rather than unsigned, which is what it is
+            List<TransactionSignature> candidates = new ArrayList<>(psbtInput.getSignatures());
+            candidates.addAll(psbtInput.getDecodedTapScriptSignatures());
             total += candidates.size();
             for(TransactionSignature candidate : candidates) {
                 boolean single = (candidate.sighashFlags & 0x1f) == SigHash.SINGLE.value;
@@ -2252,9 +2256,7 @@ public class AppServices {
 
     @Subscribe
     public void openWallets(OpenWalletsEvent event) {
-        //A wallet opened here can complete a proof that was left unfinished without it: its keys count, and its history
-        //is what the walk reads first
-        ChainOnlyCoins.forgetUnproven();
+        Set<Wallet> openBefore = new HashSet<>(getOpenWallets().keySet());
 
         if(event.getWalletTabDataList().isEmpty()) {
             List<WalletTabData> closedTabData = walletWindows.remove(event.getWindow());
@@ -2263,6 +2265,13 @@ public class AppServices {
             }
         } else {
             walletWindows.put(event.getWindow(), event.getWalletTabDataList());
+        }
+
+        //A wallet opened here can complete a proof that was left unfinished without it: its keys count, and its history
+        //is what the walk reads first. Only when the set actually grew: this event is also posted for a transaction tab
+        //opening or a tab moving, and forgetting then would only have the same coins looked at again
+        if(!openBefore.containsAll(getOpenWallets().keySet())) {
+            ChainOnlyCoins.forgetUnproven();
         }
 
         List<WalletTabData> allWallets = walletWindows.values().stream().flatMap(Collection::stream).collect(Collectors.toList());

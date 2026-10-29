@@ -609,6 +609,9 @@ public class HeadersController extends TransactionFormController implements Init
                 for(PSBTInput psbtInput : psbt.getPsbtInputs()) {
                     psbtInput.setSigHash(newValue == SigHash.DEFAULT && !psbtInput.isTaproot() ? SigHash.ALL : newValue);
                 }
+
+                //The label's own listener runs before this one, so it read the inputs' old types; read them again now
+                refreshOptInStatus();
             });
 
             Platform.runLater(this::requestOpenWallets);
@@ -1141,6 +1144,7 @@ public class HeadersController extends TransactionFormController implements Init
                     tooltip.setWrapText(true);
                     tooltip.setMaxWidth(640);
                     label.setTooltip(tooltip);
+                    label.setAccessibleHelp(tooltip.getText());
                 }
                 return;
             }
@@ -1160,6 +1164,8 @@ public class HeadersController extends TransactionFormController implements Init
             tooltip.setWrapText(true);
             tooltip.setMaxWidth(640);
             label.setTooltip(tooltip);
+            //The explanation is the tooltip's, which a screen reader does not reach
+            label.setAccessibleHelp(tooltip.getText());
         }
     }
 
@@ -1602,7 +1608,7 @@ public class HeadersController extends TransactionFormController implements Init
      * that has not been mined from what can be verified of it. A mined one shows the blockchain form instead.
      */
     private void refreshOptInStatus() {
-        if(headersForm.getPsbt() != null) {
+        if(headersForm.getPsbt() != null && headersForm.getBlockTransaction() == null) {
             updateOptInStatus(sigHash.getValue());
         } else if(headersForm.getBlockTransaction() == null && headersForm.getTransaction() != null) {
             updateFinalOptInStatus();
@@ -1642,6 +1648,14 @@ public class HeadersController extends TransactionFormController implements Init
             text = UnifiedSigHashDecision.summaryFor(true);
             protectedNow = true;
             detail = "At least one of its signatures, made by a key of this wallet and checked against it, is not valid under the pre-fork rules, so it cannot be replayed against nodes that have not adopted the fork.";
+            //As on the PSBT path: a signature that did not opt in and commits to nothing but its own input can be lifted
+            //into another transaction and spent on the other chain, whatever protects this one
+            long liftable = liftableWithoutOptIn(transaction);
+            if(liftable > 0) {
+                detail += System.lineSeparator() + System.lineSeparator()
+                        + (liftable == 1 ? "One signature here does not opt in and signs Anyone Can Pay, or Single on an input with no output of its own, so that input alone can be lifted into another transaction and spent on the chain that kept SHA256d."
+                                         : liftable + " signatures here do not opt in and sign Anyone Can Pay, or Single on an input with no output of its own, so those inputs can be lifted into another transaction and spent on the chain that kept SHA256d.");
+            }
         } else {
             Set<Sha256Hash> creatingTxids = transaction.getInputs().stream().map(input -> input.getOutpoint().getHash())
                     .collect(Collectors.toCollection(LinkedHashSet::new));
@@ -1655,9 +1669,11 @@ public class HeadersController extends TransactionFormController implements Init
                     checkChainOnlyCoins(creatingTxids);
                 }
                 protectedNow = false;
-                if(everyInputCheckedWithoutOptIn) {
+                //Not protected only once the look for a coin only this chain has is over. While it is pending, offline or
+                //backing off, the coins are unknown, and saying the transaction can be replayed would be a guess
+                if(everyInputCheckedWithoutOptIn && ChainOnlyCoins.status(creatingTxids) == ChainOnlyCoins.Status.UNPROVEN) {
                     text = UnifiedSigHashDecision.summaryFor(false);
-                    detail = "Every input is this wallet's, each signature was checked, and none opts in. These signatures are made the way they always have been, so this transaction can be replayed on the chain that kept SHA256d.";
+                    detail = "Every input is this wallet's, each signature was checked, and none opts in, and none of the coins it spends was found to exist only on this chain. These signatures are made the way they always have been, so this transaction can be replayed on the chain that kept SHA256d.";
                 } else {
                     text = UnifiedSigHashDecision.UNCHECKED_SUMMARY;
                     detail = "A final transaction carries no declaration to read, so replay protection can only be shown by checking its signatures against the keys that made them, and this wallet could not check them all."
@@ -1674,6 +1690,26 @@ public class HeadersController extends TransactionFormController implements Init
         tooltip.setWrapText(true);
         tooltip.setMaxWidth(640);
         signaturesOptIn.setTooltip(tooltip);
+        signaturesOptIn.setAccessibleHelp(detail);
+    }
+
+    /** Signatures on a final transaction that did not opt in and can be lifted out with their input. */
+    static long liftableWithoutOptIn(Transaction transaction) {
+        long liftable = 0;
+        List<TransactionInput> inputs = transaction.getInputs();
+        for(int i = 0; i < inputs.size(); i++) {
+            TransactionInput input = inputs.get(i);
+            List<TransactionSignature> signatures = input.hasWitness() && !input.getWitness().getPushes().isEmpty()
+                    ? input.getWitness().getSignatures() : input.getScriptSig().getSignatures();
+            for(TransactionSignature signature : signatures) {
+                boolean single = (signature.sighashFlags & 0x1f) == SigHash.SINGLE.value;
+                if((signature.sighashFlags & SigHash.UNIFIED_FLAG) == 0
+                        && ((signature.sighashFlags & SigHash.ANYONECANPAY.value) != 0 || (single && i >= transaction.getOutputs().size()))) {
+                    liftable++;
+                }
+            }
+        }
+        return liftable;
     }
 
     private void finalizePSBT() {
@@ -1709,23 +1745,24 @@ public class HeadersController extends TransactionFormController implements Init
 
     public void broadcastTransaction(ActionEvent event) {
         broadcastButton.setDisable(true);
-        if(headersForm.getPsbt() != null) {
-            if(!extractTransaction()) {
+        //A transaction this chain's rules refuse is one this wallet did not build, since everything it builds is within
+        //them. Said plainly here rather than left to the server's rejection, because unless it opts in or spends a coin only
+        //this chain has, the same transaction is valid on the chain that kept SHA256d. Checked before anything is
+        //extracted, so refusing leaves the tab as it was.
+        if(ReducedDataRules.isActive(Network.get(), System.currentTimeMillis() / 1000)) {
+            List<String> violations = ReducedDataRules.outputViolations(headersForm.getPsbt() != null ? headersForm.getPsbt().getTransaction() : headersForm.getTransaction());
+            if(!violations.isEmpty()) {
+                AppServices.showErrorDialog("Not valid on this chain", String.join(".\n", violations) + "."
+                        + "\n\nThis chain enforces the RDTS output size limits until September 2027, and the chain that kept SHA256d does not, so this transaction "
+                        + "can never confirm here. Unless it opts in or spends a coin only this chain has, it is valid there, and broadcast on that chain it would move the coins it spends there.");
                 broadcastButton.setDisable(false);
                 broadcastButton.requestFocus();
                 return;
             }
         }
 
-        //A transaction this chain's rules refuse is one this wallet did not build, since everything it builds is within
-        //them. Said plainly here rather than left to the server's rejection, because the same transaction is valid on the
-        //chain that kept SHA256d, and broadcast there it moves those coins instead.
-        if(ReducedDataRules.isActive(Network.get(), System.currentTimeMillis() / 1000)) {
-            List<String> violations = ReducedDataRules.outputViolations(headersForm.getTransaction());
-            if(!violations.isEmpty()) {
-                AppServices.showErrorDialog("Not valid on this chain", String.join(".\n", violations) + "."
-                        + "\n\nThis chain enforces the RDTS output size limits until September 2027, and the chain that kept SHA256d does not, so this transaction "
-                        + "can never confirm here. It is valid there, though: broadcast on that chain, it would move the coins this transaction spends on it.");
+        if(headersForm.getPsbt() != null) {
+            if(!extractTransaction()) {
                 broadcastButton.setDisable(false);
                 broadcastButton.requestFocus();
                 return;
@@ -2098,6 +2135,8 @@ public class HeadersController extends TransactionFormController implements Init
 
     @Subscribe
     public void openWallets(OpenWalletsEvent event) {
+        //Whatever else changes below, the replay label is drawn again: an opened wallet can complete a chain-only coin proof
+        Platform.runLater(this::refreshOptInStatus);
         if(id.getScene().getWindow().equals(event.getWindow()) && headersForm.getPsbt() != null && headersForm.getBlockTransaction() == null) {
             List<Wallet> availableWallets = event.getWallets().stream().filter(wallet -> wallet.canSign(headersForm.getPsbt())).sorted(new WalletSignComparator()).collect(Collectors.toList());
             List<Wallet> signingAllInputsWallets = event.getWallets().stream().filter(wallet -> wallet.canSignAllInputs(headersForm.getPsbt())).sorted(new WalletSignComparator()).collect(Collectors.toList());

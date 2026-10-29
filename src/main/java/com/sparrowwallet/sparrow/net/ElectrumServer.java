@@ -4205,6 +4205,9 @@ public class ElectrumServer {
                     Set<Sha256Hash> proven = new LinkedHashSet<>();
                     Set<Sha256Hash> open = new LinkedHashSet<>(creatingTxids);
                     int fetched = 0;
+                    //Asked for once each: a transaction the server withholds would otherwise be asked for in every round,
+                    //spending the budget other coins need
+                    Set<Sha256Hash> requested = new HashSet<>();
                     for(int round = 0; round < MAX_ROUNDS && !open.isEmpty(); round++) {
                         Set<Sha256Hash> missing = new LinkedHashSet<>();
                         for(Sha256Hash txid : List.copyOf(open)) {
@@ -4221,6 +4224,7 @@ public class ElectrumServer {
                         }
 
                         missing.removeAll(known.keySet());
+                        missing.removeAll(requested);
                         if(missing.isEmpty() || fetched >= MAX_FETCHED || round == MAX_ROUNDS - 1) {
                             break;
                         }
@@ -4228,6 +4232,7 @@ public class ElectrumServer {
                         Set<Sha256Hash> request = missing.stream().limit(MAX_FETCHED - fetched).collect(Collectors.toCollection(LinkedHashSet::new));
                         ElectrumServer electrumServer = new ElectrumServer();
                         known.putAll(electrumServer.getReferencedTransactions(request, null));
+                        requested.addAll(request);
                         fetched += request.size();
                     }
 

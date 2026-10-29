@@ -381,7 +381,11 @@ public final class ChainOnlyCoins {
             if(psbtInput.getSigHash() != null && liftable(psbtInput.getSigHash().value, noOutputAtIndex)) {
                 return true;
             }
-            for(TransactionSignature signature : psbtInput.getSignatures()) {
+            //Taproot script path signatures too, which getSignatures does not return: a foreign signer's Anyone Can Pay one
+            //is as liftable as any other
+            List<TransactionSignature> signatures = new ArrayList<>(psbtInput.getSignatures());
+            signatures.addAll(psbtInput.getDecodedTapScriptSignatures());
+            for(TransactionSignature signature : signatures) {
                 if(liftable(signature.sighashFlags, noOutputAtIndex)) {
                     return true;
                 }
