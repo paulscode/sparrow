@@ -5,6 +5,7 @@ import com.sparrowwallet.drongo.protocol.LongCoinbaseMaturity;
 import com.sparrowwallet.sparrow.wallet.Entry;
 import com.sparrowwallet.sparrow.wallet.UtxoEntry;
 import javafx.geometry.Pos;
+import javafx.scene.AccessibleAttribute;
 import javafx.scene.control.*;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
@@ -64,7 +65,7 @@ public class DateCell extends TreeTableCell<Entry, Entry> {
                     //Names the cause as well as the effect, because this is a network rule and not something
                     //Sparrow decided, and a user told only "immature" has nowhere to go with it.
                     tooltip.setText(height + "\nImmature coinbase, spendable from block " + utxoEntry.getSpendableFromHeight()
-                            + "\nMined coins must be " + LongCoinbaseMaturity.maturityDepth(Network.get())
+                            + "\nMined coins must be " + LongCoinbaseMaturity.maturityDepth(Network.get(), height)
                             + " blocks deep before the network will relay a spend of them.");
                 } else {
                     tooltip.setText(height > 0 ? Integer.toString(height) : "Mempool");
@@ -73,6 +74,16 @@ public class DateCell extends TreeTableCell<Entry, Entry> {
             }
             setGraphic(null);
         }
+    }
+
+    //In the UTXOs table the date is the first cell of each row, the one screen readers focus
+    @Override
+    public Object queryAccessibleAttribute(AccessibleAttribute attribute, Object... parameters) {
+        if(attribute == AccessibleAttribute.HELP && getContextMenu() != null && getTreeTableView() instanceof CoinTreeTable) {
+            return CoinTreeTable.withRowActionsHelp(super.queryAccessibleAttribute(attribute, parameters));
+        }
+
+        return super.queryAccessibleAttribute(attribute, parameters);
     }
 
     private static class DateContextMenu extends HashIndexEntryContextMenu {

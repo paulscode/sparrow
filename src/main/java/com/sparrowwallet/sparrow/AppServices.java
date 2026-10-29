@@ -33,20 +33,27 @@ import javafx.application.Application;
 import javafx.application.ColorScheme;
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.ReadOnlyProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
+import javafx.collections.ListChangeListener;
+import javafx.collections.ObservableList;
 import javafx.concurrent.ScheduledService;
 import javafx.concurrent.Service;
 import javafx.concurrent.Task;
+import javafx.event.EventHandler;
 import javafx.concurrent.Worker;
 import javafx.fxml.FXMLLoader;
+import javafx.scene.AccessibleRole;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.TraversalDirection;
 import javafx.scene.control.*;
 import javafx.scene.control.Dialog;
 import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.text.Font;
 import javafx.stage.Screen;
@@ -73,7 +80,9 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.sparrowwallet.sparrow.AppController.CONNECTION_FAILED_PREFIX;
 import static com.sparrowwallet.sparrow.control.DownloadVerifierDialog.*;
@@ -120,6 +129,17 @@ public class AppServices {
     private static final List<Double> LONG_FEE_RATES_RANGE = List.of(1d, 2d, 4d, 8d, 16d, 32d, 64d, 128d, 256d, 512d, 1024d, 2048d, 4096d, 8192d);
     public static final double FALLBACK_FEE_RATE = 20000d / 1000;
     public static final double TESTNET_FALLBACK_FEE_RATE = 1000d / 1000;
+    private static final EventHandler<javafx.scene.input.KeyEvent> FORWARD_ESCAPE_FROM_CLOSED_MENU_BUTTON = event -> {
+        if(event.getCode() == KeyCode.ESCAPE && event.getTarget() instanceof MenuButton menuButton && !menuButton.isShowing() && menuButton.getParent() != null) {
+            event.consume();
+            menuButton.getParent().fireEvent(event);
+        }
+    };
+    private static final ChangeListener<Boolean> NOT_FOCUS_TRAVERSABLE = (observable, wasTraversable, traversable) -> {
+        if(traversable) {
+            ((Node)((ReadOnlyProperty<?>)observable).getBean()).setFocusTraversable(false);
+        }
+    };
 
     private static AppServices INSTANCE;
 
@@ -501,7 +521,9 @@ public class AppServices {
         torService.setOnSucceeded(workerStateEvent -> {
             Tor.setDefault(torService.getValue());
             torService.cancel();
-            restartServices();
+            if(onlineProperty.get() || Config.get().getMode() == Mode.ONLINE) {
+                restartServices();
+            }
             EventManager.get().post(new TorReadyStatusEvent());
         });
         torService.setOnFailed(workerStateEvent -> {
@@ -724,6 +746,43 @@ public class AppServices {
         scene.setOnKeyPressed(event -> {
             if(event.getCode() == KeyCode.ESCAPE) {
                 runnable.run();
+            }
+        });
+    }
+
+    //Text areas holding keys, addresses, scripts or messages to sign never need a typed tab character, so Tab moves focus on rather than trapping keyboard users
+    public static void moveFocusOnTab(Node node) {
+        node.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, event -> {
+            if(event.getCode() == KeyCode.TAB && !event.isShortcutDown() && !event.isControlDown() && !event.isAltDown()) {
+                node.requestFocusTraversal(event.isShiftDown() ? TraversalDirection.PREVIOUS : TraversalDirection.NEXT);
+                event.consume();
+            }
+        });
+    }
+
+    //Menu buttons consume Escape even when their menu is closed, so Escape on a split button did not close its dialog.
+    //Like a combo box, a closed menu button passes Escape on to its parent.
+    public static void forwardEscapeFromClosedMenuButtons() {
+        Window.getWindows().addListener((ListChangeListener<Window>)change -> {
+            while(change.next()) {
+                for(Window window : change.getAddedSubList()) {
+                    window.removeEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, FORWARD_ESCAPE_FROM_CLOSED_MENU_BUTTON);
+                    window.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, FORWARD_ESCAPE_FROM_CLOSED_MENU_BUTTON);
+                }
+            }
+        });
+    }
+
+    //Charts make every data point a Tab stop while a screen reader is on, including points created before it started.
+    //The charts here are read as a one-line summary, so their points are kept out of the Tab order.
+    public static void keepChartPointsOutOfTabOrder(ObservableList<Node> plotChildren) {
+        plotChildren.addListener((ListChangeListener<Node>)change -> {
+            while(change.next()) {
+                for(Node node : change.getAddedSubList()) {
+                    node.focusTraversableProperty().removeListener(NOT_FOCUS_TRAVERSABLE);
+                    node.focusTraversableProperty().addListener(NOT_FOCUS_TRAVERSABLE);
+                    node.setFocusTraversable(false);
+                }
             }
         });
     }
@@ -1706,6 +1765,21 @@ public class AppServices {
             if(Config.get().isChunkAddresses()) {
                 stage.getScene().getRoot().getStyleClass().add("chunk-addresses");
             }
+            //macOS has no accessibility role for DIALOG and exposes it as an unknown element around the whole dialog
+            if(OsType.getCurrent() == OsType.MACOS && stage.getScene().getRoot().getAccessibleRole() == AccessibleRole.DIALOG) {
+                stage.getScene().getRoot().setAccessibleRole(AccessibleRole.PARENT);
+            }
+            //The icon an alert style puts in the dialog header is otherwise read as an unnamed image
+            if(stage.getScene().getRoot() instanceof DialogPane dialogPane) {
+                Consumer<Node> nameAlertIcon = graphic -> {
+                    if(graphic instanceof ImageView && graphic.getAccessibleText() == null) {
+                        Stream.of("warning", "error", "information", "confirmation").filter(dialogPane.getStyleClass()::contains).findFirst()
+                                .ifPresent(kind -> graphic.setAccessibleText(Character.toUpperCase(kind.charAt(0)) + kind.substring(1)));
+                    }
+                };
+                dialogPane.graphicProperty().addListener((_, _, graphic) -> nameAlertIcon.accept(graphic));
+                nameAlertIcon.accept(dialogPane.getGraphic());
+            }
         }
     }
 
@@ -2308,6 +2382,16 @@ public class AppServices {
         showProofsDialog(event, "Transaction Verification Refused", describeProofs(event.getReferences())
                 + (event.getReferences().size() == 1 ? " which then declined to prove it at that height." : " which then declined to prove them at those heights.")
                 + " A server contradicting itself in this way may be faulty or overloaded, and what it reported cannot be taken as confirmed.");
+    }
+
+    @Subscribe
+    public void unsignedTransactions(UnsignedTransactionsEvent event) {
+        String firstId = event.getTxids().iterator().next().toString().substring(0, 8) + "..";
+        String content = (event.getTxids().size() == 1 ? "Transaction " + firstId + " was" : event.getTxids().size() + " transactions, the first being " + firstId + ", were")
+                + " reported by the connected server as spending from " + event.getWallet().getFullName() + " but " + (event.getTxids().size() == 1 ? "is" : "are")
+                + " not validly signed, and " + (event.getTxids().size() == 1 ? "has" : "have") + " not been added to the wallet."
+                + " This means the server is either faulty or dishonest.\n\nConsider switching servers.";
+        Platform.runLater(() -> showErrorDialog("Invalid Transaction", content));
     }
 
     private void showProofsDialog(TransactionProofsEvent event, String title, String content) {

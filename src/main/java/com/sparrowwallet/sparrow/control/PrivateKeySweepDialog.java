@@ -77,6 +77,7 @@ public class PrivateKeySweepDialog extends Dialog<Transaction> {
         dialogPane.getStylesheets().add(AppServices.class.getResource("general.css").toExternalForm());
         dialogPane.getStylesheets().add(AppServices.class.getResource("dialog.css").toExternalForm());
         AppServices.setStageIcon(dialogPane.getScene().getWindow());
+        setTitle("Sweep Private Key");
         dialogPane.setHeaderText("Sweep Private Key");
         dialogPane.setGraphic(new WalletModelImage(WalletModel.SEED));
 
@@ -88,6 +89,7 @@ public class PrivateKeySweepDialog extends Dialog<Transaction> {
         Field keyField = new Field();
         keyField.setText("Private Key:");
         key = new TextArea();
+        AppServices.moveFocusOnTab(key);
         key.setWrapText(true);
         key.setPromptText("Wallet Import Format (WIF) or BIP38 encrypted key");
         key.setPrefRowCount(2);
@@ -95,8 +97,10 @@ public class PrivateKeySweepDialog extends Dialog<Transaction> {
         HBox keyBox = new HBox(5);
         VBox keyButtonBox = new VBox(5);
         Button scanKey = new Button("", getGlyph(FontAwesome5.Glyph.CAMERA));
+        scanKey.setAccessibleText("Scan QR Code");
         scanKey.setOnAction(event -> scanPrivateKey());
         Button readKey = new Button("", getGlyph(FontAwesome5.Glyph.FILE_IMPORT));
+        readKey.setAccessibleText("Import File");
         readKey.setOnAction(event -> readPrivateKey());
         keyButtonBox.getChildren().addAll(scanKey, readKey);
         keyBox.getChildren().addAll(key, keyButtonBox);
@@ -106,6 +110,7 @@ public class PrivateKeySweepDialog extends Dialog<Transaction> {
         if(CardApi.isReaderAvailable()) {
             VBox cardButtonBox = new VBox(5);
             Button cardKey = new Button("", getGlyph(FontAwesome5.Glyph.WIFI));
+            cardKey.setAccessibleText("Read From Card");
             cardKey.setOnAction(event -> unsealPrivateKey());
             cardButtonBox.getChildren().add(cardKey);
             keyBox.getChildren().add(cardButtonBox);
@@ -147,6 +152,7 @@ public class PrivateKeySweepDialog extends Dialog<Transaction> {
         toAddress.getStyleClass().add("fixed-width");
         toAddress.setSkin(new AddressTextFieldSkin(toAddress));
         toWallet = new ComboBox<>();
+        toWallet.setAccessibleText("Choose a wallet to sweep to");
         toWallet.setItems(FXCollections.observableList(AppServices.get().getOpenWallets().keySet().stream()
                 .filter(w -> !w.isWhirlpoolChildWallet() && !w.isBip47()).collect(Collectors.toList())));
         toAddress.setComboProperty(toWallet);
@@ -222,7 +228,7 @@ public class PrivateKeySweepDialog extends Dialog<Transaction> {
             createButton.setDisable(!isValidKey() || !isValidToAddress());
         });
 
-        toWallet.valueProperty().addListener((observable, oldValue, selectedWallet) -> {
+        toAddress.<Wallet>setOnChoose(selectedWallet -> {
             if(selectedWallet != null) {
                 if(selectedWallet.getPolicyType() == PolicyType.SINGLE_SP) {
                     toAddress.setText(selectedWallet.getSilentPaymentScanAddress().getSilentPaymentAddress().getAddress());

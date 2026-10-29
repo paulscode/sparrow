@@ -69,6 +69,7 @@ public class Config {
     private long dustAttackThresholdSp = DUST_ATTACK_THRESHOLD_SP_SATS;
     private int enumerateHwPeriod = ENUMERATE_HW_PERIOD_SECS;
     private QRDensity qrDensity;
+    private QRDensity qrDensityLevel;
     private QREncoding qrEncoding;
     private WebcamResolution webcamResolution;
     private boolean mirrorCapture = true;
@@ -546,12 +547,16 @@ public class Config {
         return enumerateHwPeriod;
     }
 
+    public QRDensity getLegacyQrDensity() {
+        return qrDensity;
+    }
+
     public QRDensity getQrDensity() {
-        return qrDensity == null ? QRDensity.NORMAL : qrDensity;
+        return qrDensityLevel;
     }
 
     public void setQrDensity(QRDensity qrDensity) {
-        this.qrDensity = qrDensity;
+        this.qrDensityLevel = qrDensity;
         flush();
     }
 
