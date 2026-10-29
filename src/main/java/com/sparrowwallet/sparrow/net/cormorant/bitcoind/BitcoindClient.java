@@ -127,8 +127,7 @@ public class BitcoindClient {
         BlockchainInfo blockchainInfo = getBitcoindService().getBlockchainInfo();
         pruned = blockchainInfo.pruned();
         pruneHeight = blockchainInfo.pruneheight();
-        VerboseBlockHeader blockHeader = getBitcoindService().getBlockHeader(blockchainInfo.bestblockhash());
-        tip = blockHeader.getBlockHeader();
+        tip = tipHeader(getBitcoindService(), blockchainInfo.bestblockhash());
         timer.schedule(new PollTask(), 5000, 5000);
 
         if(blockchainInfo.initialblockdownload() && networkInfo.networkactive()) {
@@ -150,8 +149,7 @@ public class BitcoindClient {
             }
 
             blockchainInfo = getBitcoindService().getBlockchainInfo();
-            blockHeader = getBitcoindService().getBlockHeader(blockchainInfo.bestblockhash());
-            tip = blockHeader.getBlockHeader();
+            tip = tipHeader(getBitcoindService(), blockchainInfo.bestblockhash());
         }
 
         List<String> loadedWallets;
@@ -706,6 +704,21 @@ public class BitcoindClient {
         return tip;
     }
 
+    /**
+     * The tip as the node serialized it, for the given block.
+     *
+     * The verbose form of getblockheader describes a header as JSON fields, and rebuilding the header from them makes an
+     * 80 byte one whatever was mined: a 164 byte BLAKE2b header above the fork cannot be described that way, so the
+     * rebuilt tip had the wrong hash and did not read as v2, and the opt-in decision, which reads the tip's format,
+     * declined. The raw form is the node's own bytes. The height still comes from the verbose form, asked of the same
+     * hash, so the two cannot describe different blocks the way a separate getblockchaininfo could when a block arrives
+     * between the calls.
+     */
+    static ElectrumBlockHeader tipHeader(BitcoindClientService service, String blockHash) {
+        VerboseBlockHeader verbose = service.getBlockHeader(blockHash);
+        return new ElectrumBlockHeader(verbose.height(), service.getBlockHeader(blockHash, false));
+    }
+
     private class PollTask extends TimerTask {
         @Override
         public void run() {
@@ -759,8 +772,7 @@ public class BitcoindClient {
                 updateStore(listSinceBlock);
 
                 if(currentBlock == null || !currentBlock.equals(listSinceBlock.lastblock())) {
-                    VerboseBlockHeader blockHeader = getBitcoindService().getBlockHeader(listSinceBlock.lastblock());
-                    tip = blockHeader.getBlockHeader();
+                    tip = tipHeader(getBitcoindService(), listSinceBlock.lastblock());
                     Cormorant.getEventBus().post(tip);
                 }
 
