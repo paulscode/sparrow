@@ -1204,8 +1204,10 @@ public class AppServices {
      * @param optedIn  verified signatures carrying the opt-in
      * @param verified signatures a key this wallet derives was shown to have made
      * @param total    signatures present, checked or not
-     * @param liftable verified signatures that did not opt in and sign Anyone Can Pay, so each can be
-     *                 lifted into another transaction and spent on the chain that kept SHA256d
+     * @param liftable signatures that did not opt in and can be lifted into another transaction and spent on the
+     *                 chain that kept SHA256d: Anyone Can Pay, or Single on an input with no output of its own.
+     *                 Counted whether verified or not, since this only ever adds a warning, and one withheld for a
+     *                 co-signer this wallet cannot check is the warning that matters
      */
     public record OptInCounts(int optedIn, int verified, int total, int liftable) {
         /** One verified opt-in protects the whole transaction. */
@@ -1240,8 +1242,19 @@ public class AppServices {
         int verified = 0;
         int total = 0;
         int liftable = 0;
-        for(PSBTInput psbtInput : psbt.getPsbtInputs()) {
-            total += psbtInput.getSignatures().size();
+        int outputs = psbt.getTransaction().getOutputs().size();
+        List<PSBTInput> psbtInputs = psbt.getPsbtInputs();
+        for(int i = 0; i < psbtInputs.size(); i++) {
+            PSBTInput psbtInput = psbtInputs.get(i);
+            Collection<TransactionSignature> candidates = psbtInput.getSignatures();
+            total += candidates.size();
+            for(TransactionSignature candidate : candidates) {
+                boolean single = (candidate.sighashFlags & 0x1f) == SigHash.SINGLE.value;
+                if((candidate.sighashFlags & SigHash.UNIFIED_FLAG) == 0
+                        && ((candidate.sighashFlags & SigHash.ANYONECANPAY.value) != 0 || (single && i >= outputs))) {
+                    liftable++;
+                }
+            }
 
             WalletNode signingNode = signingNodes.get(psbtInput);
             if(signingNode == null) {
@@ -1253,10 +1266,6 @@ public class AppServices {
                 verified++;
                 if((signature.sighashFlags & SigHash.UNIFIED_FLAG) != 0) {
                     optedIn++;
-                } else if((signature.sighashFlags & SigHash.ANYONECANPAY.value) != 0) {
-                    //Counted in the same pass as the rest. Read separately it meant verifying every
-                    //signature in the transaction a second time, on the thread drawing the screen.
-                    liftable++;
                 }
             }
         }

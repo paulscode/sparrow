@@ -158,10 +158,12 @@ public class SignatureOptInWiringTest {
     }
 
     /**
-     * A liftable signature is counted only where it was verified too, and in the same pass.
+     * A liftable signature is counted whether it was verified or not. The count only ever adds a warning under a headline
+     * that a verified opt-in already earned, and a co-signer this wallet cannot check is exactly whose Anyone Can Pay
+     * signature it must not stay silent about.
      */
     @Test
-    public void aLiftableSignatureIsCountedOnceAndOnlyWhenVerified() throws Exception {
+    public void aLiftableSignatureIsCountedWhetherOrNotItWasVerified() throws Exception {
         Wallet wallet = wallet();
         AppServices.OptInCounts counts = AppServices.signatureOptInCounts(signedPsbt(wallet, SigHash.ANYONECANPAY_ALL), wallet);
 
@@ -170,8 +172,10 @@ public class SignatureOptInWiringTest {
         Assertions.assertEquals(1, counts.liftable(),
                 "a legacy Anyone Can Pay signature can be lifted onto the chain that kept SHA256d");
 
-        Assertions.assertEquals(0, AppServices.signatureOptInCounts(signedPsbt(wallet, SigHash.ANYONECANPAY_ALL), null).liftable(),
-                "with nothing verified there is nothing to report as liftable either");
+        AppServices.OptInCounts unchecked = AppServices.signatureOptInCounts(signedPsbt(wallet, SigHash.ANYONECANPAY_ALL), null);
+        Assertions.assertEquals(0, unchecked.verified());
+        Assertions.assertEquals(1, unchecked.liftable(), "a signature this wallet cannot check is still one that can be lifted");
+        Assertions.assertFalse(unchecked.isProtected(), "and nothing unchecked is claimed as protection");
     }
 
     @Test
