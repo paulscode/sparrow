@@ -47,7 +47,7 @@ jobs:
       # Run the suite before packaging. The header and difficulty rules this fork adds are consensus
       # code in a wallet, so a red test must stop a release artifact from being produced at all.
       - name: Test
-        run: ./gradlew :drongo:test test
+        run: ./gradlew :drongo:test :lark:test test
 
       - name: Build with Gradle
         run: ./gradlew jpackage
