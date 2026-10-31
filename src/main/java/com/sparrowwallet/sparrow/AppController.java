@@ -1226,6 +1226,10 @@ public class AppController implements Initializable {
         List<File> parentDirs = files.stream().map(File::getParentFile).distinct().collect(Collectors.toList());
         if(parentDirs.size() == 1 && !Boolean.FALSE.equals(Config.get().getSuggestChangeWalletsDir())) {
             File selectedDir = parentDirs.getFirst();
+            //Upstream Sparrow's wallets are copied rather than opened in place, so its folder is never this one's
+            if(UpstreamWallets.isUpstreamFile(selectedDir)) {
+                return;
+            }
             boolean sameDir;
             try {
                 sameDir = Files.isSameFile(selectedDir.toPath(), Storage.getWalletsDir().toPath());
@@ -1247,6 +1251,41 @@ public class AppController implements Initializable {
     }
 
     public void openWalletFile(File file, boolean forceSameWindow) {
+        if(UpstreamWallets.isUpstreamFile(file)) {
+            file = copyUpstreamWallet(file);
+            if(file == null) {
+                return;
+            }
+        }
+
+        loadWalletFile(file, forceSameWindow);
+    }
+
+    /**
+     * Offers to copy a wallet file of upstream Sparrow's into this build's wallets folder, and returns the copy, or null if
+     * it is not to be opened. Opened in place, it would be migrated to this build's database schema, which upstream may
+     * not be able to read, and filled with this chain's history.
+     */
+    private static File copyUpstreamWallet(File file) {
+        ButtonType copy = new ButtonType("Copy and Open", ButtonBar.ButtonData.OK_DONE);
+        Optional<ButtonType> optType = AppServices.showWarningDialog("Wallet from upstream Sparrow",
+                file.getName() + " is in upstream Sparrow's folder.\n\nOpening it here would change it in ways upstream Sparrow may not be able to read, "
+                        + "and fill it with the BLAKE2b chain's transactions. Sparrow (BLAKE2b) can open a copy instead, in its own wallets folder, "
+                        + "and leave the original as it is.", ButtonType.CANCEL, copy);
+        if(optType.isEmpty() || optType.get() != copy) {
+            return null;
+        }
+
+        try {
+            return UpstreamWallets.copyInto(file, Storage.getWalletsDir());
+        } catch(IOException e) {
+            log.error("Error copying " + file.getAbsolutePath(), e);
+            AppServices.showErrorDialog("Could not copy the wallet", e.getMessage());
+            return null;
+        }
+    }
+
+    private void loadWalletFile(File file, boolean forceSameWindow) {
         try {
             Storage storage = new Storage(file);
             if(!storage.isEncrypted()) {
