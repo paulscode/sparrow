@@ -419,6 +419,16 @@ public class PaymentController extends WalletFormController implements Initializ
         });
         amountStatus.managedProperty().bind(amountStatus.visibleProperty());
         amountStatus.visibleProperty().bind(sendController.insufficientInputsProperty().and(dustAmountProperty.not()).and(emptyAmountProperty.not()));
+        //Said here as well as on the fee field, since this is where it shows when the fee is automatic, which is usually.
+        //Read when it appears, because the immature balance is part of what it says
+        amountStatus.visibleProperty().addListener((observable, wasVisible, visible) -> {
+            if(visible) {
+                String message = sendController.getInsufficientInputsMessage();
+                boolean immature = !message.equals(InsufficientInputsDescription.get(null));
+                amountStatus.setText(immature ? "Insufficient spendable funds" : "Insufficient funds");
+                amountStatus.getTooltip().setText(immature ? message : "Not enough spendable funds to pay this amount and the fee");
+            }
+        });
         dustStatus.managedProperty().bind(dustStatus.visibleProperty());
         dustStatus.visibleProperty().bind(dustAmountProperty);
 
@@ -559,7 +569,7 @@ public class PaymentController extends WalletFormController implements Initializ
                 Validator.createEmptyValidator("Label is required")
         ));
         validationSupport.registerValidator(amount, Validator.combine(
-                (Control c, String newValue) -> ValidationResult.fromErrorIf( c, "Insufficient Inputs", getRecipientValueSats() != null && sendController.isInsufficientInputs()),
+                (Control c, String newValue) -> ValidationResult.fromErrorIf( c, sendController.getInsufficientInputsMessage(), getRecipientValueSats() != null && sendController.isInsufficientInputs()),
                 (Control c, String newValue) -> ValidationResult.fromErrorIf( c, "Insufficient Value", getRecipientValueSats() != null && getRecipientValueSats() < getRecipientDustThreshold())
         ));
     }

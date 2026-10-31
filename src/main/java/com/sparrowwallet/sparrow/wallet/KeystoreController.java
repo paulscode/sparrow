@@ -422,7 +422,7 @@ public class KeystoreController extends WalletFormController implements Initiali
         //another source shows the right thing
         unifiedSigHashField.setVisible(AppServices.canBeMarked(keystore));
         unifiedSigHash.setText(keystore.getSource().isHardware()
-                ? "Supported by this device" : "Supported by the signer for this keystore");
+                ? "This device's firmware signs the opt-in" : "The signer for this keystore signs the opt-in");
         refreshingUnifiedSigHash = true;
         try {
             unifiedSigHash.setSelected(keystore.isUnifiedSigHashSupported());

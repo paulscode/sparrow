@@ -3,6 +3,7 @@ package com.sparrowwallet.sparrow.control;
 import com.sparrowwallet.drongo.wallet.Keystore;
 import com.sparrowwallet.drongo.wallet.Wallet;
 import com.sparrowwallet.sparrow.AppServices;
+import com.sparrowwallet.sparrow.ForkLinks;
 import com.sparrowwallet.sparrow.glyphfont.GlyphUtils;
 import com.sparrowwallet.sparrow.glyphfont.FontAwesome5;
 import javafx.geometry.Insets;
@@ -36,8 +37,11 @@ public class UnifiedSigHashKeystoreDialog extends Dialog<List<Keystore>> {
 
         setTitle("Replay Protection");
         dialogPane.setHeaderText("""
-                A device reports its model but not its firmware, so only you can say which of these support the \
-                opt-in.
+                A device reports its model but not its firmware, and a watch only keystore says nothing about what \
+                signs for it, so only you can say which of these support the opt-in.
+
+                Firmware known to as of this release: Trezor unified-sighash.2, Coldcard 5.6.3U-1.5.3QU, SeedSigner \
+                0.8.7-unified-sighash.6 and, experimentally, Krux 26.09.0-xbt.1. Stock firmware does not.
 
                 Leave one unmarked if you are unsure. A device marked that does not support it signs nothing rather \
                 than falling back. This applies to transactions created from now on.""");
@@ -57,8 +61,11 @@ public class UnifiedSigHashKeystoreDialog extends Dialog<List<Keystore>> {
         //Indented to line up with the header text above it, rather than sitting against the edge of the pane
         content.setPadding(new Insets(4, 20, 0, 20));
         for(Keystore keystore : wallet.getKeystores()) {
-            if(keystore.getSource().isHardware()) {
-                CheckBox mark = new CheckBox(keystore.getLabel() + " (" + keystore.getWalletModel().toDisplayString() + ")");
+            //Every keystore the keystore tab lets the user mark, so the send screen, which offers this dialog for the same
+            //wallets, never opens it on nothing
+            if(AppServices.canBeMarked(keystore)) {
+                CheckBox mark = new CheckBox(keystore.getLabel() + " (" + (keystore.getSource().isHardware()
+                        ? keystore.getWalletModel().toDisplayString() : "watch only") + ")");
                 mark.setSelected(keystore.isUnifiedSigHashSupported());
                 marks.put(keystore, mark);
                 content.getChildren().add(mark);
@@ -98,6 +105,14 @@ public class UnifiedSigHashKeystoreDialog extends Dialog<List<Keystore>> {
             update.run();
             content.getChildren().add(progress);
         }
+
+        //Not every device can be reflashed, or should be, and the other way to protect a send is to spend a coin
+        //only this chain has alongside the rest
+        Label stock = new Label("Stock firmware? A send can still be protected by including a coin only this chain has.");
+        stock.setWrapText(true);
+        Hyperlink guide = new Hyperlink("Splitting a hardware wallet");
+        guide.setOnAction(event -> AppServices.get().getApplication().getHostServices().showDocument(ForkLinks.SPLIT_GUIDE));
+        content.getChildren().add(new VBox(0, stock, guide));
 
         dialogPane.setContent(content);
 

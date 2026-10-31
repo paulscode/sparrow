@@ -1180,7 +1180,7 @@ public class HeadersController extends TransactionFormController implements Init
 
     private static String chainOnlyCoinDetail(ChainOnlyCoins.Proven proven) {
         return "Whatever its own signatures carry, this transaction spends a coin descended from transaction " + proven.txid()
-                + ", whose opted-in signature, made by one of your own wallets, is not valid under the pre-fork rules. That coin does not exist on the chain that kept SHA256d, "
+                + ", whose opted-in signature, made by one of your own wallets, is not valid on the SHA256d chain. That coin does not exist on the chain that kept SHA256d, "
                 + "so neither can this transaction. None of its signatures signs Anyone Can Pay, or Single on an input with no output of its own, "
                 + "so no input can be lifted out and replayed on its own."
                 + System.lineSeparator() + System.lineSeparator() + ChainOnlyCoins.CAVEAT;
@@ -1233,10 +1233,10 @@ public class HeadersController extends TransactionFormController implements Init
         }
 
         if(everySignature || signatures == 0) {
-            return "These signatures are not valid under the pre-fork rules, so they cannot be replayed against nodes that have not adopted the fork, and they commit to the amounts they spend.";
+            return "These signatures are not valid on the SHA256d chain, so the transaction cannot be replayed there, and they commit to the amounts they spend.";
         }
 
-        String detail = "This transaction cannot be replayed against nodes that have not adopted the fork: one signature that opts in is enough, and "
+        String detail = "This transaction cannot be replayed on the SHA256d chain: one signature that opts in is enough, and "
                 + optedInSignatures + " of " + signatures + " do."
                 + System.lineSeparator() + System.lineSeparator();
 
@@ -1656,7 +1656,7 @@ public class HeadersController extends TransactionFormController implements Init
         if(verifiedOptIn) {
             text = UnifiedSigHashDecision.summaryFor(true);
             protectedNow = true;
-            detail = "At least one of its signatures, made by a key of this wallet and checked against it, is not valid under the pre-fork rules, so it cannot be replayed against nodes that have not adopted the fork.";
+            detail = "At least one of its signatures, made by a key of this wallet and checked against it, is not valid on the SHA256d chain, so the transaction cannot be replayed there.";
             //As on the PSBT path: a signature that did not opt in and commits to nothing but its own input can be lifted
             //into another transaction and spent on the other chain, whatever protects this one
             long liftable = liftableWithoutOptIn(transaction);

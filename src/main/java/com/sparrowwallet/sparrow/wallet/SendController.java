@@ -507,7 +507,7 @@ public class SendController extends WalletFormController implements Initializabl
      * Names the immature balance when there is one, rather than letting "Insufficient Inputs" imply the
      * money is not there. See {@link InsufficientInputsDescription}.
      */
-    private String getInsufficientInputsMessage() {
+    String getInsufficientInputsMessage() {
         long immatureBalance = getWalletForm().getWalletTransactionsEntry().getImmatureBalance();
         if(immatureBalance <= 0) {
             return InsufficientInputsDescription.get(null);
@@ -1191,7 +1191,7 @@ public class SendController extends WalletFormController implements Initializabl
         setOptInStatusActionable(actionable ? () -> markKeystores(walletTransaction.getWallet()) : null);
 
         Tooltip tooltip = new Tooltip(decision.isOptedIn()
-                ? "These signatures are not valid under the pre-fork rules, so they cannot be replayed against nodes that have not adopted the fork, and they commit to the amounts they spend."
+                ? "These signatures are not valid on the SHA256d chain, so the transaction cannot be replayed there, and they commit to the amounts they spend."
                     + (decision.getCaveat() == null ? "" : System.lineSeparator() + System.lineSeparator() + decision.getCaveat()
                         + namedSigners(walletTransaction))
                 : "Signing the way it always has been, because " + decision.getReason() + "."
@@ -1236,7 +1236,7 @@ public class SendController extends WalletFormController implements Initializabl
         setOptInStatusActionable(null);
 
         Tooltip tooltip = new Tooltip("One of the coins this spends descends from transaction " + proven.txid()
-                + ", whose opted-in signature, made by one of your own wallets, is not valid under the pre-fork rules. That coin does not exist on the chain that kept SHA256d, "
+                + ", whose opted-in signature, made by one of your own wallets, is not valid on the SHA256d chain. That coin does not exist on the chain that kept SHA256d, "
                 + "so neither can any transaction spending it, whatever its own signatures are. The ordinary signatures this wallet makes commit to every input, "
                 + "so the coin cannot be taken out and the rest replayed. The transaction tab checks this again against the signature type it is signed with, "
                 + "since Anyone Can Pay, and Single on some inputs, would let an input be lifted out."

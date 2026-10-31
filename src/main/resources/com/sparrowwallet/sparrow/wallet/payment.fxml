@@ -41,7 +41,10 @@
                 </StackPane>
             </Field>
             <Field fx:id="requestNoteField">
-                <Label fx:id="requestNote" wrapText="true" text="A payment request does not say which chain it is for. This pays on the BLAKE2b chain, so check that the recipient expects that.">
+                <Label fx:id="requestNote" text="Payment requests don't say which chain they are for. This pays on the BLAKE2b chain.">
+                    <tooltip>
+                        <Tooltip wrapText="true" maxWidth="480" text="A bitcoin: link, a name or a payment code says nothing about which chain it is for, and whoever made it most likely expects to be paid on the SHA256d chain. Check that the recipient expects to be paid on the BLAKE2b chain before sending." />
+                    </tooltip>
                     <graphic>
                         <Glyph fontFamily="Font Awesome 5 Free Solid" fontSize="12" icon="EXCLAMATION_TRIANGLE" styleClass="warn-icon" />
                     </graphic>
@@ -69,7 +72,7 @@
                 <Group managed="false" translateY="38">
                     <Label fx:id="amountStatus" text="Insufficient funds">
                         <tooltip>
-                            <Tooltip text="Insufficient confirmed transaction value" />
+                            <Tooltip text="Not enough spendable funds to pay this amount and the fee" />
                         </tooltip>
                         <graphic>
                             <Glyph fontFamily="Font Awesome 5 Free Solid" fontSize="12" icon="EXCLAMATION_CIRCLE" styleClass="failure" />
