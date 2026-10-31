@@ -37,11 +37,26 @@ public final class UpstreamWallets {
     }
 
     public static boolean isUpstreamFile(File file) {
-        return isUpstreamFile(file, upstreamHomes());
+        return isUpstreamFile(file, upstreamHomes(), ownWalletsDir().toPath());
     }
 
-    static boolean isUpstreamFile(File file, List<Path> upstreamHomes) {
+    /**
+     * This build's own wallets folder under its home, not a configured one. Earlier builds offered to make upstream's
+     * folder the configured one, and a wallet there is upstream's whatever this build was told.
+     */
+    public static File ownWalletsDir() {
+        return new File(Storage.getDataDir(), Storage.WALLETS_DIR);
+    }
+
+    /**
+     * Whether the file is in one of upstream's folders. Never this build's own wallets folder, which a home given with
+     * --dir can put inside one of upstream's.
+     */
+    static boolean isUpstreamFile(File file, List<Path> upstreamHomes, Path ownWalletsDir) {
         Path path = resolve(file.toPath());
+        if(ownWalletsDir != null && path.startsWith(resolve(ownWalletsDir))) {
+            return false;
+        }
         return upstreamHomes.stream().map(UpstreamWallets::resolve).anyMatch(path::startsWith);
     }
 

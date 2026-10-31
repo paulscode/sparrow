@@ -244,6 +244,17 @@ public class VariableHeaders {
     }
 
     /**
+     * How a refusal starts when the server gave no answer to read, as opposed to an answer for another chain. The first may
+     * be passing, a server still catching up or a request that timed out, so it is retried; the second is not.
+     */
+    public static final String UNDETERMINED_PREFIX = "The chain this server follows could not be established";
+
+    /** Whether a refusal from {@link #getChainMismatchError} is for want of an answer rather than for a wrong one. */
+    public static boolean isUndetermined(String chainError) {
+        return chainError != null && chainError.startsWith(UNDETERMINED_PREFIX);
+    }
+
+    /**
      * The height whose header settles which chain a server follows, or -1 where this network has no such height.
      *
      * <p>The first block mined under BLAKE2b, because it is the first one whose format differs. Every header below it is
@@ -319,7 +330,7 @@ public class VariableHeaders {
             return null;    //the server names this chain's fork point, which is the question that was asked
         }
 
-        return "The chain this server follows could not be established: it did not serve the block header at height "
+        return UNDETERMINED_PREFIX + ": it did not serve the block header at height "
                 + expectedHeight + ", and it does not report a BLAKE2b fork point. This build follows the BLAKE2b chain, "
                 + "which on " + network + " forked at that height.";
     }
@@ -346,7 +357,7 @@ public class VariableHeaders {
         try {
             header = split(Utils.hexToBytes(activationHeader), 1).getFirst();
         } catch(ProtocolException | IllegalArgumentException e) {
-            return "The chain this server follows could not be established: its block header at height " + expectedHeight
+            return UNDETERMINED_PREFIX + ": its block header at height " + expectedHeight
                     + " could not be read (" + e.getMessage() + ").";
         }
 

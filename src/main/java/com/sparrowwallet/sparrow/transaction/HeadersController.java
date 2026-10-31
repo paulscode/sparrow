@@ -1717,8 +1717,17 @@ public class HeadersController extends TransactionFormController implements Init
             return true;
         }
 
+        //The tab's own record of the coins it spends, which covers child wallets and transactions loaded from elsewhere,
+        //with the wallet's over it, since the wallet keeps its heights current
+        Map<Sha256Hash, BlockTransaction> parents = new HashMap<>();
+        if(headersForm.getInputTransactions() != null) {
+            parents.putAll(headersForm.getInputTransactions());
+        }
         Wallet wallet = headersForm.getSigningWallet() != null ? headersForm.getSigningWallet() : headersForm.getWallet();
-        long preFork = wallet == null ? 0 : preForkInputValue(headersForm.getTransaction(), wallet.getTransactions(), Blake2bDeployment.activationHeight(Network.get()));
+        if(wallet != null) {
+            parents.putAll(wallet.getTransactions());
+        }
+        long preFork = preForkInputValue(headersForm.getTransaction(), parents, Blake2bDeployment.activationHeight(Network.get()));
         if(preFork == 0) {
             return true;
         }
@@ -1736,11 +1745,11 @@ public class HeadersController extends TransactionFormController implements Init
         return optType.isPresent() && optType.get() == broadcast;
     }
 
-    /** The value of the inputs whose coins were mined before the fork, by the wallet's record of the transactions that made them. */
-    static long preForkInputValue(Transaction transaction, Map<Sha256Hash, BlockTransaction> walletTransactions, int activationHeight) {
+    /** The value of the inputs whose coins were mined before the fork, by the given record of the transactions that made them. */
+    static long preForkInputValue(Transaction transaction, Map<Sha256Hash, BlockTransaction> parents, int activationHeight) {
         long value = 0;
         for(TransactionInput input : transaction.getInputs()) {
-            BlockTransaction parent = walletTransactions.get(input.getOutpoint().getHash());
+            BlockTransaction parent = parents.get(input.getOutpoint().getHash());
             if(parent != null && parent.getHeight() > 0 && parent.getHeight() < activationHeight) {
                 int index = (int)input.getOutpoint().getIndex();
                 if(index < parent.getTransaction().getOutputs().size()) {

@@ -24,9 +24,16 @@ public class UpstreamWalletsTest {
         Path ours = Files.createDirectories(home.resolve(".sparrowblake2b/wallets"));
         List<Path> upstreamHomes = List.of(home.resolve(".sparrow"));
 
-        Assertions.assertTrue(UpstreamWallets.isUpstreamFile(upstream.resolve("hot.mv.db").toFile(), upstreamHomes));
-        Assertions.assertTrue(UpstreamWallets.isUpstreamFile(upstream.toFile(), upstreamHomes), "the folder itself");
-        Assertions.assertFalse(UpstreamWallets.isUpstreamFile(ours.resolve("hot.mv.db").toFile(), upstreamHomes), "a name that merely starts the same");
+        Assertions.assertTrue(UpstreamWallets.isUpstreamFile(upstream.resolve("hot.mv.db").toFile(), upstreamHomes, ours));
+        Assertions.assertTrue(UpstreamWallets.isUpstreamFile(upstream.toFile(), upstreamHomes, ours), "the folder itself");
+        Assertions.assertFalse(UpstreamWallets.isUpstreamFile(ours.resolve("hot.mv.db").toFile(), upstreamHomes, ours), "a name that merely starts the same");
+    }
+
+    /** A home given with --dir inside upstream's folder holds this build's own wallets, which open in place as always. */
+    @Test
+    public void thisBuildsOwnWalletsAreNeverUpstreams() throws IOException {
+        Path ours = Files.createDirectories(home.resolve(".sparrow/blake2b/wallets"));
+        Assertions.assertFalse(UpstreamWallets.isUpstreamFile(ours.resolve("hot.mv.db").toFile(), List.of(home.resolve(".sparrow")), ours));
     }
 
     @Test

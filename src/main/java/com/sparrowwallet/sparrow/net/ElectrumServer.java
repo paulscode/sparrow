@@ -3525,7 +3525,8 @@ public class ElectrumServer {
                         //chain is the easiest mistake to make when both run on the same machine.
                         String chainError = VariableHeaders.getChainMismatchError(features, electrumServer.getChainIdentityHeader());
                         if(chainError != null) {
-                            throw new ChainMismatchException(chainError);
+                            //Not having an answer may pass, so it is retried; an answer for another chain will not
+                            throw VariableHeaders.isUndetermined(chainError) ? new ServerException(chainError) : new ChainMismatchException(chainError);
                         }
 
                         if(isVerificationMandatory() && !serverCapability.supportsMerkleProofs()) {

@@ -88,6 +88,22 @@ public class FullNodeChainIdentityTest {
         Assertions.assertNull(ChainMismatchException.find(new RuntimeException("other")));
     }
 
+    /**
+     * A server that gave no answer may be catching up or have timed out, so it is retried rather than refused for good,
+     * and is not called a server on another chain. One that answered for another chain is.
+     */
+    @Test
+    public void noAnswerIsRetriedAndAWrongAnswerIsNot() {
+        Network.set(Network.MAINNET);
+
+        String noAnswer = VariableHeaders.getChainMismatchError(features(null), null);
+        Assertions.assertTrue(VariableHeaders.isUndetermined(noAnswer), noAnswer);
+        Assertions.assertTrue(VariableHeaders.isUndetermined(VariableHeaders.getChainMismatchError(features(null), "00")), "an unreadable header is no answer either");
+
+        String wrongAnswer = VariableHeaders.getChainMismatchError(features(null), SHA256D_961640);
+        Assertions.assertFalse(VariableHeaders.isUndetermined(wrongAnswer), wrongAnswer);
+    }
+
     private static ServerFeatures features(ServerFeatures.Blake2bFork fork) {
         ServerFeatures features = new ServerFeatures();
         features.blake2b_fork = fork;

@@ -32,7 +32,6 @@ import com.sparrowwallet.drongo.dns.DnsPaymentResolver;
 import com.sparrowwallet.sparrow.paynym.PayNym;
 import com.sparrowwallet.sparrow.paynym.PayNymDialog;
 import javafx.application.Platform;
-import tornadofx.control.Field;
 import javafx.beans.binding.Bindings;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ObjectProperty;
@@ -54,6 +53,7 @@ import javafx.scene.control.*;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.HBox;
+import tornadofx.control.Field;
 import org.controlsfx.glyphfont.Glyph;
 import org.controlsfx.validation.ValidationResult;
 import org.controlsfx.validation.ValidationSupport;
@@ -873,8 +873,8 @@ public class PaymentController extends WalletFormController implements Initializ
     }
 
     /**
-     * Notes that this payment came from a request: a bitcoin: link, a name or a payment code. None of them says which chain
-     * it is for, and the person who made it most likely expects the SHA256d chain.
+     * Notes that this payment came from a bitcoin: link. Like a name or a payment code, which are noted from their own
+     * properties, it says nothing about which chain it is for, and whoever made it most likely expects the SHA256d chain.
      */
     public void markFromRequest() {
         requestAddressProperty.set(address.getText());

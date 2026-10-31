@@ -40,7 +40,7 @@ public class UnifiedSigHashKeystoreDialog extends Dialog<List<Keystore>> {
                 A device reports its model but not its firmware, and a watch only keystore says nothing about what \
                 signs for it, so only you can say which of these support the opt-in.
 
-                Firmware known to as of this release: Trezor unified-sighash.2, Coldcard 5.6.3U-1.5.3QU, SeedSigner \
+                Firmware known to support it, as of this release: Trezor unified-sighash.2, Coldcard 5.6.3U-1.5.3QU, SeedSigner \
                 0.8.7-unified-sighash.6 and, experimentally, Krux 26.09.0-xbt.1. Stock firmware does not.
 
                 Leave one unmarked if you are unsure. A device marked that does not support it signs nothing rather \

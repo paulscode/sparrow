@@ -367,6 +367,9 @@ public class AppServices {
 
             //Said once, as a dialog: it is not retried, and the status bar has room for only a line of it
             ChainMismatchException chainMismatch = ChainMismatchException.find(failEvent.getSource().getException());
+            if(chainMismatch != null) {
+                log.warn(chainMismatch.getMessage());
+            }
             if(chainMismatch != null && Interface.get() == Interface.DESKTOP) {
                 Platform.runLater(() -> showErrorDialog("Server on a different chain", chainMismatch.getMessage() + "\n\n" + ChainMismatchException.REMEDY));
             }

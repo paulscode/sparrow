@@ -94,6 +94,7 @@ public class AppController implements Initializable {
     public static final double TAB_LABEL_GRAPHIC_OPACITY_ACTIVE = 0.95;
     public static final String LOADING_TRANSACTIONS_MESSAGE = "Loading wallet, select Transactions tab to view...";
     public static final String CONNECTION_FAILED_PREFIX = "Connection failed: ";
+    private static final String NO_SERVER_STATUS = "No server configured";
     public static final String TRYING_ANOTHER_SERVER_MESSAGE = "trying another server...";
 
     @FXML
@@ -1282,9 +1283,21 @@ public class AppController implements Initializable {
         Optional<ButtonType> optType = AppServices.showWarningDialog("Wallet from upstream Sparrow",
                 file.getName() + " is in upstream Sparrow's folder.\n\nOpening it here would change it in ways upstream Sparrow may not be able to read, "
                         + "and fill it with the BLAKE2b chain's transactions. Sparrow (BLAKE2b) can open a copy instead, in its own wallets folder, "
-                        + "and leave the original as it is.", ButtonType.CANCEL, copy);
+                        + "and leave the original as it is.\n\nClose the wallet in upstream Sparrow first, so the copy is complete.", ButtonType.CANCEL, copy);
         if(optType.isEmpty() || optType.get() != copy) {
+            //Otherwise a wallet reopened at startup would ask again every time, with nothing else open to replace it in the list
+            List<File> recentWalletFiles = Config.get().getRecentWalletFiles();
+            if(recentWalletFiles != null && recentWalletFiles.contains(file)) {
+                List<File> remaining = new ArrayList<>(recentWalletFiles);
+                remaining.remove(file);
+                Config.get().setRecentWalletFiles(remaining);
+            }
             return null;
+        }
+
+        //Earlier builds offered to make upstream's folder this one's, and a copy made there would be no copy at all
+        if(Config.get().getWalletsDir() != null && UpstreamWallets.isUpstreamFile(Config.get().getWalletsDir())) {
+            Config.get().setWalletsDir(null);
         }
 
         try {
@@ -1604,6 +1617,9 @@ public class AppController implements Initializable {
         settingsDialog.showAndWait();
         configureSwitchServer();
         serverToggle.setDisable(!Config.get().hasServer());
+        if(Config.get().hasServer() && NO_SERVER_STATUS.equals(statusBar.getText())) {
+            statusUpdated(new StatusEvent("Disconnected (click toggle on the right to connect)", 240));
+        }
     }
 
     public void signVerifyMessage(ActionEvent event) {
@@ -3228,7 +3244,7 @@ public class AppController implements Initializable {
                 //disabled, and asking for a click on it would be no help
                 Hyperlink serverSettings = new Hyperlink("Server Settings");
                 serverSettings.setOnAction(this::openServerSettings);
-                statusUpdated(new StatusEvent("No server configured", serverSettings, 240));
+                statusUpdated(new StatusEvent(NO_SERVER_STATUS, serverSettings, 240));
             }
         }
         if(statusTimeline == null || statusTimeline.getStatus() != Animation.Status.RUNNING) {
