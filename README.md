@@ -14,6 +14,26 @@ Sparrow is a modern desktop Bitcoin wallet application supporting most hardware 
 Release binaries are on the [releases page](https://github.com/paulscode/sparrow/releases) of this
 repository. There is no website, and these binaries are not distributed by sparrowwallet.com.
 
+Each release has the following files, shown here for 2.5.6-blake2b.8:
+
+| Platform | Installer | Archive |
+|---|---|---|
+| macOS (Apple silicon, Intel) | `Sparrow-BLAKE2b-2.5.6-blake2b.8-aarch64.dmg`, `…-x86_64.dmg` | |
+| Windows | `Sparrow-BLAKE2b-2.5.6-blake2b.8.msi` | `Sparrow-BLAKE2b-2.5.6-blake2b.8.zip` |
+| Linux, Debian and Ubuntu | `sparrowwallet-blake2b_2.5.6-8_amd64.deb`, `…_arm64.deb` | `sparrowwallet-blake2b-2.5.6-blake2b.8-x86_64.tar.gz`, `…-aarch64.tar.gz` |
+| Linux, Fedora and RHEL | `sparrowwallet-blake2b-2.5.6-8.x86_64.rpm`, `…aarch64.rpm` | |
+
+Sparrow Server, the terminal-only build for Linux, comes as `sparrowserver-blake2b` in the same
+`.deb`, `.rpm` and `.tar.gz` forms.
+
+The installers install beside upstream Sparrow rather than over it: the Linux packages are named
+`sparrowwallet-blake2b` and `sparrowserver-blake2b` and install to their own directories under
+`/opt`, and on Windows the app is installed and registered as "Sparrow BLAKE2b". On Windows, links
+such as `bitcoin:` payment requests are offered to this app through Settings, Apps, Default apps,
+rather than taken over from whichever app opens them now. The macOS and Windows builds are not
+signed: macOS asks you to right-click the app and choose Open the first time, and Windows may show a
+SmartScreen warning.
+
 Verify them before installing:
 
 ```
