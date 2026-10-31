@@ -1,7 +1,7 @@
 name: Package BLAKE2b
 
 # jpackage builds only for the host OS and architecture, so the five release artifacts need five
-# runners. This matrix is upstream's, minus the headless server build, which this fork does not ship.
+# runners. This matrix is upstream's. The Linux runners also build the headless Sparrow Server packages.
 #
 # The macOS jobs produce an UNSIGNED .dmg. Upstream signs and notarizes with its own Apple Developer
 # ID, which is not ours to use, so that step is gone and Gatekeeper will refuse the app on first
@@ -63,6 +63,34 @@ jobs:
         if: ${{ runner.os == 'Linux' }}
         run: ./gradlew packageTarDistribution
 
+      # jpackage writes the .deb with zstd, which dpkg before Debian 12 and Ubuntu 21.10 cannot read. Upstream's
+      # script recompresses it with xz.
+      - name: Repackage Linux deb distribution
+        if: ${{ runner.os == 'Linux' }}
+        run: ./repackage.sh
+
+      # The packages must declare this fork's name and the release as their revision, or they would replace upstream's
+      # package, or fail to upgrade an earlier release of this one. Checked here rather than trusted, before upload.
+      - name: Check the Linux package names and versions
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: .github/scripts/check-linux-packages.sh sparrowwallet-blake2b
+
+      # jpackage names the .msi from the app name and its version, which on Windows is the ProductVersion the release is
+      # folded into (2.5.6-blake2b.8 is 2.5.6008). It takes the release the app reports, as the other artifacts do.
+      - name: Name the Windows installer for its release
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          msi=$(find build/jpackage -maxdepth 1 -name '*.msi' | head -1)
+          [ -n "$msi" ] || { echo "no .msi produced"; ls -la build/jpackage; exit 1; }
+          suffix=$(sed -n 's/.*APP_VERSION_SUFFIX = "\([^"]*\)";.*/\1/p' src/main/java/com/sparrowwallet/sparrow/SparrowWallet.java)
+          version=$(sed -n "s/^version = '\([^']*\)'/\1/p" build.gradle)
+          [ -n "$suffix" ] && [ -n "$version" ] || { echo "no version or APP_VERSION_SUFFIX found"; exit 1; }
+          mv "$msi" "build/jpackage/Sparrow-BLAKE2b-${version}${suffix}.msi"
+          ls -la build/jpackage/*.msi
+
       # jpackage names the .dmg from installerName and version alone, so both macOS jobs would
       # otherwise emit the same filename and the second would overwrite the first on the release.
       # jpackage's version is the upstream base, which cannot carry the release suffix, so the name
@@ -89,6 +117,39 @@ jobs:
           # archives, not things to publish, and together they are far larger than what they produce.
           path: |
             build/jpackage/*.dmg
+            build/jpackage/*.msi
             build/jpackage/*.zip
             build/jpackage/*.tar.gz
+            build/jpackage/*.deb
+            build/jpackage/*.rpm
+          if-no-files-found: error
+
+      # Sparrow Server, the terminal build. A clean build, since the headless image differs from the desktop one; the
+      # desktop artifacts are uploaded above first.
+      - name: Headless build with Gradle
+        if: ${{ runner.os == 'Linux' }}
+        run: ./gradlew -Djava.awt.headless=true clean jpackage
+
+      - name: Package Linux headless tar distribution
+        if: ${{ runner.os == 'Linux' }}
+        run: ./gradlew -Djava.awt.headless=true packageTarDistribution
+
+      - name: Repackage Linux headless deb distribution
+        if: ${{ runner.os == 'Linux' }}
+        run: ./repackage.sh
+
+      - name: Check the Linux headless package names and versions
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: .github/scripts/check-linux-packages.sh sparrowserver-blake2b
+
+      - name: Upload headless artifact
+        if: ${{ runner.os == 'Linux' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sparrow-blake2b-server-${{ runner.os }}-${{ runner.arch }}
+          path: |
+            build/jpackage/*.tar.gz
+            build/jpackage/*.deb
+            build/jpackage/*.rpm
           if-no-files-found: error

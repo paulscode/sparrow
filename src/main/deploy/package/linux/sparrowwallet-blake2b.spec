@@ -1,20 +1,18 @@
-Summary: Sparrow
-Name: sparrowwallet
+Summary: Sparrow (BLAKE2b) Wallet
+Name: sparrowwallet-blake2b
 Version: ${version}
-Release: 1
+Release: ${release}
 License: ASL 2.0
-Vendor: Unknown
+Vendor: Paul Lamb
 
 %if "x" != "x"
-URL: https://sparrowwallet.com
+URL: https://github.com/paulscode/sparrow
 %endif
 
 %if "x/opt" != "x"
 Prefix: /opt
 %endif
 
-Provides: sparrowwallet
-Obsoletes: sparrow <= 2.1.4
 
 %if "xutils" != "x"
 Group: utils
@@ -41,7 +39,7 @@ Requires: xdg-utils
 %define default_filesystem / /opt /usr /usr/bin /usr/lib /usr/local /usr/local/bin /usr/local/lib
 
 %description
-Sparrow Wallet
+Sparrow (BLAKE2b) Wallet, a build of Sparrow that follows the BLAKE2b chain
 
 %global __os_install_post %{nil}
 
@@ -51,8 +49,8 @@ Sparrow Wallet
 
 %install
 rm -rf %{buildroot}
-install -d -m 755 %{buildroot}/opt/sparrowwallet
-cp -r %{_sourcedir}/opt/sparrowwallet/* %{buildroot}/opt/sparrowwallet
+install -d -m 755 %{buildroot}/opt/sparrowwallet-blake2b
+cp -r %{_sourcedir}/opt/sparrowwallet-blake2b/* %{buildroot}/opt/sparrowwallet-blake2b
 if [ "$(echo %{_sourcedir}/lib/systemd/system/*.service)" != '%{_sourcedir}/lib/systemd/system/*.service' ]; then
   install -d -m 755 %{buildroot}/lib/systemd/system
   cp %{_sourcedir}/lib/systemd/system/*.service %{buildroot}/lib/systemd/system
@@ -78,9 +76,10 @@ sed -i -e 's/.*/%dir "&"/' %{package_filelist}
 
 %post
 package_type=rpm
-xdg-desktop-menu install /opt/sparrowwallet/lib/sparrowwallet-Sparrow.desktop
-xdg-mime install /opt/sparrowwallet/lib/sparrowwallet-Sparrow-MimeInfo.xml
-install -D -m 644 /opt/sparrowwallet/lib/runtime/conf/udev/*.rules /etc/udev/rules.d
+xdg-desktop-menu install /opt/sparrowwallet-blake2b/lib/sparrowwallet-blake2b-sparrow.desktop
+xdg-mime install /opt/sparrowwallet-blake2b/lib/sparrowwallet-blake2b-MimeInfo.xml
+mkdir -p /etc/udev/rules.d
+install -D -m 644 /opt/sparrowwallet-blake2b/lib/runtime/conf/udev/*.rules /etc/udev/rules.d
 if ! getent group plugdev > /dev/null; then
     groupadd -r plugdev
 fi
@@ -252,9 +251,9 @@ desktop_trace ()
   echo "$@"
 }
 
-do_if_file_belongs_to_single_package /opt/sparrowwallet/lib/sparrowwallet-Sparrow.desktop xdg-desktop-menu uninstall /opt/sparrowwallet/lib/sparrowwallet-Sparrow.desktop
-do_if_file_belongs_to_single_package /opt/sparrowwallet/lib/sparrowwallet-Sparrow-MimeInfo.xml xdg-mime uninstall /opt/sparrowwallet/lib/sparrowwallet-Sparrow-MimeInfo.xml
-do_if_file_belongs_to_single_package /opt/sparrowwallet/lib/sparrowwallet-Sparrow.desktop desktop_uninstall_default_mime_handler sparrowwallet-Sparrow.desktop application/psbt application/bitcoin-transaction application/pgp-signature x-scheme-handler/bitcoin x-scheme-handler/auth47 x-scheme-handler/lightning
+do_if_file_belongs_to_single_package /opt/sparrowwallet-blake2b/lib/sparrowwallet-blake2b-sparrow.desktop xdg-desktop-menu uninstall /opt/sparrowwallet-blake2b/lib/sparrowwallet-blake2b-sparrow.desktop
+do_if_file_belongs_to_single_package /opt/sparrowwallet-blake2b/lib/sparrowwallet-blake2b-MimeInfo.xml xdg-mime uninstall /opt/sparrowwallet-blake2b/lib/sparrowwallet-blake2b-MimeInfo.xml
+do_if_file_belongs_to_single_package /opt/sparrowwallet-blake2b/lib/sparrowwallet-blake2b-sparrow.desktop desktop_uninstall_default_mime_handler sparrowwallet-blake2b-sparrow.desktop application/psbt application/bitcoin-transaction application/pgp-signature x-scheme-handler/bitcoin x-scheme-handler/auth47 x-scheme-handler/lightning
 
 
 %clean

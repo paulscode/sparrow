@@ -1,12 +1,9 @@
-Package: sparrowserver
-Version: ${version}-1
+Package: sparrowserver-blake2b
+Version: ${version}-${release}
 Section: utils
-Maintainer: Craig Raw <mail@sparrowwallet.com>
+Maintainer: Paul Lamb <paul@paulscode.com>
 Priority: optional
 Architecture: ${arch}
-Conflicts: sparrow (<= 2.1.4)
-Replaces: sparrow (<= 2.1.4)
-Provides: sparrowserver
-Description: Sparrow Server
+Description: Sparrow (BLAKE2b) Server, the terminal build of Sparrow that follows the BLAKE2b chain
 Depends: libc6, zlib1g
 Installed-Size: ${size}

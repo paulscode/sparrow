@@ -4,6 +4,7 @@
   This file is a copy of the jpackage WiX template (src/jdk.jpackage/windows/classes/jdk/jpackage/internal/resources/main.wxs in the JDK sources),
   customized only to add the RegistryEntries and CapabilitiesEntries components registering the auth47, bitcoin and lightning URI schemes, and their ComponentRefs in the Feature.
   When upgrading the build JDK, re-diff this file against that JDK's template and re-apply those blocks, keeping the component GUIDs unchanged.
+  This fork's blocks differ from upstream's: they register this app's own handlers rather than the shared scheme keys, under GUIDs of its own (see below).
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
@@ -79,10 +80,17 @@
     <Directory Id="TARGETDIR" Name="SourceDir"/>
 
     <DirectoryRef Id="TARGETDIR">
-        <Component Id="RegistryEntries" Guid="{206C911C-56EF-44B8-9257-5FD214427965}">
-            <RegistryKey Root="HKCR" Key="auth47" Action="createAndRemoveOnUninstall">
-                <RegistryValue Type="string" Name="URL Protocol" Value=""/>
+        <!--
+          The links this app can open, as handlers of its own. Never the shared auth47, bitcoin and lightning keys, which
+          upstream Sparrow's installer writes: whichever installer ran last owned those, and uninstalling either removed them
+          for both. Registered here, and offered through Default apps below, the user chooses which app opens a link, and
+          installing or removing this one leaves upstream's alone. The component GUIDs are this fork's: Windows Installer
+          treats a component GUID as one shared set of resources, and upstream's GUIDs describe its resources, not these.
+        -->
+        <Component Id="RegistryEntries" Guid="{9af53c72-bee2-4668-aec1-0650f90eac3e}">
+            <RegistryKey Root="HKMU" Key="Software\Classes\SparrowBLAKE2b.auth47" Action="createAndRemoveOnUninstall">
                 <RegistryValue Type="string" Value="URL:Auth47 Authentication URI"/>
+                <RegistryValue Type="string" Name="URL Protocol" Value=""/>
                 <RegistryKey Key="DefaultIcon">
                     <RegistryValue Type="string" Value="[INSTALLDIR]$(var.JpAppName).exe" />
                 </RegistryKey>
@@ -90,9 +98,9 @@
                     <RegistryValue Type="string" Value="&quot;[INSTALLDIR]$(var.JpAppName).exe&quot; &quot;%1&quot;" />
                 </RegistryKey>
             </RegistryKey>
-            <RegistryKey Root="HKCR" Key="bitcoin" Action="createAndRemoveOnUninstall">
-                <RegistryValue Type="string" Name="URL Protocol" Value=""/>
+            <RegistryKey Root="HKMU" Key="Software\Classes\SparrowBLAKE2b.bitcoin" Action="createAndRemoveOnUninstall">
                 <RegistryValue Type="string" Value="URL:Bitcoin Payment URL"/>
+                <RegistryValue Type="string" Name="URL Protocol" Value=""/>
                 <RegistryKey Key="DefaultIcon">
                     <RegistryValue Type="string" Value="[INSTALLDIR]$(var.JpAppName).exe" />
                 </RegistryKey>
@@ -100,9 +108,9 @@
                     <RegistryValue Type="string" Value="&quot;[INSTALLDIR]$(var.JpAppName).exe&quot; &quot;%1&quot;" />
                 </RegistryKey>
             </RegistryKey>
-            <RegistryKey Root="HKCR" Key="lightning" Action="createAndRemoveOnUninstall">
-                <RegistryValue Type="string" Name="URL Protocol" Value=""/>
+            <RegistryKey Root="HKMU" Key="Software\Classes\SparrowBLAKE2b.lightning" Action="createAndRemoveOnUninstall">
                 <RegistryValue Type="string" Value="URL:LNURL URI"/>
+                <RegistryValue Type="string" Name="URL Protocol" Value=""/>
                 <RegistryKey Key="DefaultIcon">
                     <RegistryValue Type="string" Value="[INSTALLDIR]$(var.JpAppName).exe" />
                 </RegistryKey>
@@ -111,14 +119,14 @@
                 </RegistryKey>
             </RegistryKey>
         </Component>
-        <Component Id="CapabilitiesEntries" Guid="{BE92DD88-F799-47CC-A256-4165F9183A46}">
+        <Component Id="CapabilitiesEntries" Guid="{ce268d0b-250f-4506-890e-6a1db95d8ee7}">
             <RegistryKey Root="HKMU" Key="Software\$(var.JpAppName)\Capabilities" Action="createAndRemoveOnUninstall">
                 <RegistryValue Type="string" Name="ApplicationName" Value="$(var.JpAppName)"/>
                 <RegistryValue Type="string" Name="ApplicationDescription" Value="$(var.JpAppDescription)"/>
                 <RegistryKey Key="URLAssociations">
-                    <RegistryValue Type="string" Name="auth47" Value="auth47"/>
-                    <RegistryValue Type="string" Name="bitcoin" Value="bitcoin"/>
-                    <RegistryValue Type="string" Name="lightning" Value="lightning"/>
+                    <RegistryValue Type="string" Name="auth47" Value="SparrowBLAKE2b.auth47"/>
+                    <RegistryValue Type="string" Name="bitcoin" Value="SparrowBLAKE2b.bitcoin"/>
+                    <RegistryValue Type="string" Name="lightning" Value="SparrowBLAKE2b.lightning"/>
                 </RegistryKey>
             </RegistryKey>
             <RegistryValue Root="HKMU" Key="Software\RegisteredApplications" Name="$(var.JpAppName)" Type="string" Value="Software\$(var.JpAppName)\Capabilities"/>

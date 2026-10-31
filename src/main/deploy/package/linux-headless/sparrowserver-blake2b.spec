@@ -1,20 +1,18 @@
-Summary: Sparrow Server
-Name: sparrowserver
+Summary: Sparrow (BLAKE2b) Server
+Name: sparrowserver-blake2b
 Version: ${version}
-Release: 1
+Release: ${release}
 License: ASL 2.0
-Vendor: Unknown
+Vendor: Paul Lamb
 
 %if "x" != "x"
-URL: https://sparrowwallet.com
+URL: https://github.com/paulscode/sparrow
 %endif
 
 %if "x/opt" != "x"
 Prefix: /opt
 %endif
 
-Provides: sparrowserver
-Obsoletes: sparrow <= 2.1.4
 
 %if "xutils" != "x"
 Group: utils
@@ -38,7 +36,7 @@ Autoreq: 0
 %define default_filesystem / /opt /usr /usr/bin /usr/lib /usr/local /usr/local/bin /usr/local/lib
 
 %description
-Sparrow Server
+Sparrow (BLAKE2b) Server, the terminal build of Sparrow that follows the BLAKE2b chain
 
 %global __os_install_post %{nil}
 
@@ -48,8 +46,8 @@ Sparrow Server
 
 %install
 rm -rf %{buildroot}
-install -d -m 755 %{buildroot}/opt/sparrowserver
-cp -r %{_sourcedir}/opt/sparrowserver/* %{buildroot}/opt/sparrowserver
+install -d -m 755 %{buildroot}/opt/sparrowserver-blake2b
+cp -r %{_sourcedir}/opt/sparrowserver-blake2b/* %{buildroot}/opt/sparrowserver-blake2b
 if [ "$(echo %{_sourcedir}/lib/systemd/system/*.service)" != '%{_sourcedir}/lib/systemd/system/*.service' ]; then
   install -d -m 755 %{buildroot}/lib/systemd/system
   cp %{_sourcedir}/lib/systemd/system/*.service %{buildroot}/lib/systemd/system

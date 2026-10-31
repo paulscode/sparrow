@@ -23,6 +23,37 @@ def skipInstallers = "true".equals(findProperty("skipInstallers"))
 group = 'com.sparrowwallet'
 version = '2.5.6'
 
+// The release this build reports itself as, e.g. 2.5.6-blake2b.7, read from the one place the app reports it from, so the
+// two cannot disagree. version stays the upstream base, so every package format that orders releases by version needs
+// the fork release number folded in, or installing .8 over .7 is not an upgrade at all.
+def releaseSuffixMatcher = file('src/main/java/com/sparrowwallet/sparrow/SparrowWallet.java').text =~ /APP_VERSION_SUFFIX = "-blake2b\.([0-9]+)"/
+if(!releaseSuffixMatcher.find()) {
+    throw new GradleException("APP_VERSION_SUFFIX in SparrowWallet.java is not of the form -blake2b.N, which the release artifacts and package versions are derived from")
+}
+def releaseNumber = releaseSuffixMatcher.group(1).toInteger()
+def releaseSuffix = "-blake2b.${releaseNumber}"
+def releaseVersion = "${version}${releaseSuffix}"
+
+// What a Windows installer reports as its ProductVersion, which is how Windows decides whether installing one release over
+// another is an upgrade. A ProductVersion is MAJOR.MINOR.BUILD and the base uses all three fields, so the release is folded
+// into BUILD as patch * 1000 + release: 2.5.6-blake2b.8 is 2.5.6008. It keeps rising when the release counter restarts on a
+// new base (2.5.6-blake2b.99 is 2.5.6099, 2.5.7-blake2b.1 is 2.5.7001). After Shrike's #53.
+def windowsProductVersion = {
+    def parts = version.tokenize('.')
+    if(parts.size() != 3 || !parts.every { it ==~ /[0-9]+/ }) {
+        throw new GradleException("Expected a three part numeric version to derive a Windows ProductVersion from, got ${version}")
+    }
+    //Past 999 a release would carry into the next patch's range, and jpackage derives the product code from the version
+    if(releaseNumber > 999) {
+        throw new GradleException("Release ${releaseNumber} no longer fits the ProductVersion scheme, which allows 999 per upstream base")
+    }
+    def build = parts[2].toInteger() * 1000 + releaseNumber
+    if(build > 65535) {
+        throw new GradleException("ProductVersion build field ${build} exceeds the 65535 an MSI allows")
+    }
+    return "${parts[0]}.${parts[1]}.${build}"
+}
+
 repositories {
     mavenCentral()
     maven { url = uri('https://code.sparrowwallet.com/api/packages/sparrowwallet/maven') }
@@ -296,25 +327,36 @@ jlink {
         imageName = appImageName
         installerName = appImageName
         appVersion = "${version}"
+        //Shown as the publisher in Windows' installed apps and in the Linux packages. Also an input to the upgrade code
+        //jpackage would derive on Windows, which is pinned below so a change here cannot orphan existing installs.
+        vendor = 'Paul Lamb'
         //Upstream skips the macOS installer because its signing action builds and notarizes the .dmg afterwards. This
         //build is unsigned, so there is no such step and jpackage has to produce the .dmg itself.
         skipInstaller = skipInstallers
         imageOptions = []
         installerOptions = ['--file-associations', 'src/main/deploy/psbt.properties', '--file-associations', 'src/main/deploy/txn.properties', '--file-associations', 'src/main/deploy/asc.properties', '--license-file', 'LICENSE']
         if(os.windows) {
-            installerOptions.addAll(['--win-per-user-install', '--win-menu', '--win-menu-group', 'Sparrow BLAKE2b', '--win-shortcut', '--resource-dir', 'src/main/deploy/package/windows/'])
+            //The upgrade code is what Windows uses to recognise an earlier install of the same product. Pinned, rather than
+            //derived from the vendor and name as jpackage would, so it cannot drift, and so it is never upstream's
+            installerOptions.addAll(['--win-per-user-install', '--win-menu', '--win-menu-group', 'Sparrow BLAKE2b', '--win-shortcut', '--resource-dir', 'src/main/deploy/package/windows/',
+                                     '--win-upgrade-uuid', '91bbc22c-8e08-4a33-980e-879bc5616a1b'])
             imageOptions.addAll(['--icon', 'src/main/deploy/package/windows/sparrow.ico'])
             installerType = "msi"
+            appVersion = windowsProductVersion()
         }
         if(os.linux) {
+            //Package names, and with them the /opt directory, apart from upstream's sparrowwallet and sparrowserver, so the
+            //two install side by side rather than one replacing the other
             if(headless) {
-                installerName = "sparrowserver"
+                installerName = "sparrowserver-blake2b"
                 installerOptions = ['--license-file', 'LICENSE']
             } else {
-                installerName = "sparrowwallet"
-                installerOptions.addAll(['--linux-shortcut', '--linux-menu-group', 'Sparrow BLAKE2b'])
+                installerName = "sparrowwallet-blake2b"
+                installerOptions.addAll(['--linux-shortcut', '--linux-menu-group', 'Finance'])
             }
-            installerOptions.addAll(['--resource-dir', layout.buildDirectory.dir('deploy/package').get().asFile.toString(), '--linux-app-category', 'utils', '--linux-app-release', '1', '--linux-rpm-license-type', 'ASL 2.0', '--linux-deb-maintainer', 'mail@sparrowwallet.com'])
+            //The release is the package revision, so apt and dnf order 2.5.6-8 above 2.5.6-7. After Shrike's bb86638d
+            installerOptions.addAll(['--resource-dir', layout.buildDirectory.dir('deploy/package').get().asFile.toString(), '--linux-app-category', 'utils', '--linux-app-release', "${releaseNumber}",
+                                     '--linux-rpm-license-type', 'ASL 2.0', '--linux-deb-maintainer', 'paul@paulscode.com'])
             imageOptions.addAll(['--icon', 'src/main/deploy/package/linux/Sparrow.png', '--resource-dir', 'src/main/deploy/package/linux/'])
         }
         if(os.macOsX) {
@@ -336,6 +378,33 @@ jlink {
         jpackageImage {
             dependsOn('prepareModulesDir', 'copyUdevRules')
         }
+    }
+}
+
+// On Linux the jlink plugin leaves the image recording "Sparrow BLAKE2b" as its main launcher, whose binary it does not keep,
+// beside the "sparrow" launcher that is the only one there. The deb and rpm then gained a menu entry per recorded launcher,
+// one of them running a binary that does not exist, and ignored the desktop template, which is named for the launcher.
+// The record is made to say what the image holds: one launcher, sparrow. Left alone where it already does.
+if(os.linux) {
+    tasks.jpackageImage.doLast {
+        def imageDir = layout.buildDirectory.dir("jpackage/${appImageName}").get().asFile
+        def stateFile = new File(imageDir, 'lib/app/.jpackage.xml')
+        def state = stateFile.text
+        def mainMatcher = state =~ /<main-launcher>([^<]*)<\/main-launcher>/
+        if(!mainMatcher.find()) {
+            throw new GradleException("No main launcher recorded in ${stateFile}")
+        }
+        def mainLauncher = mainMatcher.group(1)
+        if(new File(imageDir, "bin/${mainLauncher}").exists()) {
+            return
+        }
+        def addLauncher = '<add-launcher name="sparrow" service="false"></add-launcher>'
+        if(!new File(imageDir, 'bin/sparrow').exists() || !state.contains(addLauncher)) {
+            throw new GradleException("The image records ${mainLauncher} as its main launcher without its binary, and has no sparrow launcher to take its place")
+        }
+        stateFile.text = state.replace("<main-launcher>${mainLauncher}</main-launcher>", '<main-launcher>sparrow</main-launcher>').replace(addLauncher, '')
+        new File(imageDir, "lib/app/${mainLauncher}.cfg").delete()
+        new File(imageDir, "lib/${mainLauncher}.png").delete()
     }
 }
 
@@ -413,6 +482,12 @@ tasks.register('copyUdevRules', Copy) {
 }
 
 tasks.register('prepareResourceDir', Copy) {
+    //The values filtered in are inputs as much as the templates are: tracked only by the files, a build after the release
+    //changed reused the last build's control file and declared the old version inside a package named for the new one.
+    //The installed size is read from the image, so it always runs; it is a handful of small files
+    inputs.property('version', "${version}")
+    inputs.property('release', releaseNumber)
+    outputs.upToDateWhen { false }
     from("src/main/deploy/package/linux${headless ? '-headless' : ''}")
     into(layout.buildDirectory.dir('deploy/package'))
     include('*')
@@ -422,7 +497,7 @@ tasks.register('prepareResourceDir', Copy) {
                 if(line.contains('${size}')) {
                     line = line.replace('${size}', getDirectorySize(layout.buildDirectory.dir("jpackage/${appImageName}").get().asFile))
                 }
-                return line.replace('${version}', "${version}").replace('${arch}', osArch == 'aarch64' ? 'arm64' : 'amd64')
+                return line.replace('${version}', "${version}").replace('${release}', "${releaseNumber}").replace('${arch}', osArch == 'aarch64' ? 'arm64' : 'amd64')
             }
         }
     }
@@ -432,7 +507,7 @@ tasks.register('copyMimeInfo', Copy) {
     mustRunAfter tasks.jpackageImage
     from('src/main/deploy/package/linux')
     into(layout.buildDirectory.dir("jpackage/${appImageName}/lib"))
-    include('sparrowwallet-Sparrow-MimeInfo.xml')
+    include('sparrowwallet-blake2b-MimeInfo.xml')
 }
 
 static def getDirectorySize(File directory) {
@@ -456,13 +531,6 @@ tasks.register('removeGroupWritePermission', Exec) {
 // The release this build reports itself as, e.g. 2.5.6-blake2b.7. The upstream base alone named every artifact of every
 // release on one base identically, so a download said nothing about which release it was. Read from the one place the
 // app reports it from, so the two cannot disagree. After Shrike #51.
-def releaseSuffixMatcher = file('src/main/java/com/sparrowwallet/sparrow/SparrowWallet.java').text =~ /APP_VERSION_SUFFIX = "([^"]*)"/
-if(!releaseSuffixMatcher.find()) {
-    throw new GradleException("APP_VERSION_SUFFIX not found in SparrowWallet.java, which the release artifacts are named from")
-}
-def releaseSuffix = releaseSuffixMatcher.group(1)
-def releaseVersion = "${version}${releaseSuffix}"
-
 tasks.register('packageZipDistribution', Zip) {
     archiveFileName = "Sparrow-BLAKE2b-${releaseVersion}.zip"
     destinationDirectory = file("$buildDir/jpackage")
