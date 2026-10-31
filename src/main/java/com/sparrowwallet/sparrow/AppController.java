@@ -233,6 +233,9 @@ public class AppController implements Initializable {
     private StatusBar statusBar;
 
     @FXML
+    private Label chainBadge;
+
+    @FXML
     private UnlabeledToggleSwitch serverToggle;
 
     private Storage.KeyDerivationService keyDerivationService;
@@ -454,6 +457,11 @@ public class AppController implements Initializable {
 
         configureSwitchServer();
         setServerType(Config.get().getServerType());
+        Tooltip chainBadgeTooltip = new Tooltip(SparrowWallet.APP_DISPLAY_NAME + " " + SparrowWallet.APP_VERSION + SparrowWallet.APP_VERSION_SUFFIX
+                + "\nFollows the BLAKE2b chain, not the chain that kept SHA256d.");
+        chainBadgeTooltip.setShowDelay(Duration.millis(250));
+        chainBadge.setTooltip(chainBadgeTooltip);
+
         serverToggle.setSelected(isConnected());
         serverToggle.setDisable(!Config.get().hasServer());
         onlineProperty().bindBidirectional(serverToggle.selectedProperty());
@@ -2776,6 +2784,20 @@ public class AppController implements Initializable {
         tab.setTooltip(null);
     }
 
+    /**
+     * Where an indicator goes that sits the given distance from the end of the status bar's right items, kept after the
+     * BLAKE2b badge, which stays first whatever is added. Counting from the end alone put the Tor indicator before the
+     * badge whenever the server toggle was the only item after it.
+     */
+    private int indicatorIndex(int fromEnd) {
+        return indicatorIndex(statusBar.getRightItems().size(), statusBar.getRightItems().indexOf(chainBadge), fromEnd);
+    }
+
+    static int indicatorIndex(int size, int badgeIndex, int fromEnd) {
+        int afterBadge = badgeIndex + 1;
+        return fromEnd >= size ? afterBadge : Math.max(size - fromEnd, afterBadge);
+    }
+
     private void setTorIcon() {
         TorStatusLabel torStatusLabel = null;
         for(Node node : statusBar.getRightItems()) {
@@ -2792,7 +2814,7 @@ public class AppController implements Initializable {
         } else {
             if(torStatusLabel == null) {
                 torStatusLabel = new TorStatusLabel();
-                statusBar.getRightItems().add(Math.max(statusBar.getRightItems().size() - 2, 0), torStatusLabel);
+                statusBar.getRightItems().add(indicatorIndex(2), torStatusLabel);
             } else {
                 torStatusLabel.update();
             }
@@ -3054,10 +3076,10 @@ public class AppController implements Initializable {
                 statusBar.getRightItems().remove(existingLabel);
             }
         } else if(existingLabel == null) {
-            //Added at the front, alongside the version update indicator. The Tor and USB indicators
+            //Added at the front of the indicators, just after the BLAKE2b badge. The Tor and USB indicators
             //position themselves relative to the end of the list, so an insertion here shifts their
             //target index and the items they sit against by the same amount and cannot displace them.
-            statusBar.getRightItems().add(0, new UnifiedSigHashStatusLabel(event));
+            statusBar.getRightItems().add(indicatorIndex(Integer.MAX_VALUE), new UnifiedSigHashStatusLabel(event));
         } else {
             existingLabel.update(event);
         }
@@ -3106,7 +3128,7 @@ public class AppController implements Initializable {
         } else {
             if(usbStatus == null) {
                 usbStatus = new UsbStatusButton();
-                statusBar.getRightItems().add(Math.max(statusBar.getRightItems().size() - 1, 0), usbStatus);
+                statusBar.getRightItems().add(indicatorIndex(1), usbStatus);
             } else {
                 usbStatus.getItems().remove(0, usbStatus.getItems().size());
             }

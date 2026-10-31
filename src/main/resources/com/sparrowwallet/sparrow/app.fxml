@@ -187,6 +187,9 @@
 
         <StatusBar fx:id="statusBar" text="" minHeight="36" focusTraversable="false">
             <rightItems>
+                <!-- Which Sparrow this is, at a glance from any screen. Always first: the indicators insert after it -->
+                <Label fx:id="chainBadge" text="BLAKE2b" styleClass="chain-badge" focusTraversable="false"
+                       accessibleText="Sparrow BLAKE2b, which follows the BLAKE2b chain" />
                 <UnlabeledToggleSwitch fx:id="serverToggle" accessibleText="Server connection">
                     <tooltip>
                         <Tooltip text="Disconnected" />

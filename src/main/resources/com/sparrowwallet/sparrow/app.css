@@ -116,3 +116,12 @@
     -fx-background-color: linear-gradient(to bottom, derive(-fx-text-box-border, -20%), derive(-fx-text-box-border, -30%)), linear-gradient(to bottom, derive(gold, 30%), gold);
     -fx-background-insets: 0, 1;
 }
+/* Which Sparrow this is, from any screen: the band on the app icon, as a badge in the status bar */
+.chain-badge {
+    -fx-background-color: #262f38;
+    -fx-background-radius: 9;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-font-size: 0.85em;
+    -fx-padding: 1 8 1 8;
+}

@@ -402,3 +402,10 @@ HorizontalHeaderColumn > TableColumnHeader.column-header.table-column{
 .root.chunk-addresses .tree-table-view .tree-table-row-cell:selected .address-chunk.alternate {
     -fx-fill: derive(-fx-selection-bar-text, -20%);
 }
+
+/* The badge's slate is close to the dark status bar, so it is outlined to stay distinct */
+.chain-badge {
+    -fx-border-color: #8a96a3;
+    -fx-border-radius: 9;
+    -fx-text-fill: white;
+}
