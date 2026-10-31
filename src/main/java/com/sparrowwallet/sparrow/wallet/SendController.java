@@ -1778,6 +1778,7 @@ public class SendController extends WalletFormController implements Initializabl
                     if(event.getBitcoinURI() != null) {
                         PaymentController controller = (PaymentController)paymentTabs.getTabs().get(0).getUserData();
                         controller.setPayjoinURI(event.getBitcoinURI());
+                        controller.markFromRequest();
                     }
                     updateTransaction(event.getPayments() == null || event.getPayments().stream().anyMatch(Payment::isSendMax));
                 });

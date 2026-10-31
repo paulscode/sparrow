@@ -18,6 +18,7 @@ import com.sparrowwallet.hummingbird.registry.CryptoPSBT;
 import com.sparrowwallet.sparrow.AppServices;
 import com.sparrowwallet.sparrow.ChainOnlyCoins;
 import com.sparrowwallet.sparrow.EventManager;
+import com.sparrowwallet.sparrow.ForkLinks;
 import com.sparrowwallet.sparrow.UnifiedSigHashDecision;
 import com.sparrowwallet.sparrow.UnitFormat;
 import com.sparrowwallet.sparrow.control.*;
@@ -228,6 +229,12 @@ public class HeadersController extends TransactionFormController implements Init
 
     @FXML
     private Label signaturesOptIn;
+
+    /**
+     * What the replay label last said: true protected, false not protected, null not checked. Read at broadcast, so the
+     * warning there says what the screen said and nothing more.
+     */
+    private Boolean replayProtected;
 
     @FXML
     private Form sigHashForm;
@@ -1136,6 +1143,7 @@ public class HeadersController extends TransactionFormController implements Init
                     .map(input -> input.getOutpoint().getHash()).collect(Collectors.toCollection(LinkedHashSet::new));
             Optional<ChainOnlyCoins.Proven> proven = ChainOnlyCoins.proven(creatingTxids);
             if(proven.isPresent() && !ChainOnlyCoins.anInputCanBeLifted(psbt, psbtSigHash)) {
+                replayProtected = true;
                 for(Label label : List.of(signingWalletOptIn, signaturesOptIn)) {
                     label.setText(UnifiedSigHashDecision.summaryFor(true));
                     label.setGraphic(GlyphUtils.getSuccessGlyph());
@@ -1154,6 +1162,7 @@ public class HeadersController extends TransactionFormController implements Init
             }
         }
 
+        replayProtected = uncertain ? null : optedIn;
         for(Label label : List.of(signingWalletOptIn, signaturesOptIn)) {
             label.setText(uncertain ? UnifiedSigHashDecision.UNCHECKED_SUMMARY : UnifiedSigHashDecision.summaryFor(optedIn));
             label.setGraphic(optedIn && !uncertain ? GlyphUtils.getSuccessGlyph() : GlyphUtils.getWarningGlyph());
@@ -1672,9 +1681,11 @@ public class HeadersController extends TransactionFormController implements Init
                 //Not protected only once the look for a coin only this chain has is over. While it is pending, offline or
                 //backing off, the coins are unknown, and saying the transaction can be replayed would be a guess
                 if(everyInputCheckedWithoutOptIn && ChainOnlyCoins.status(creatingTxids) == ChainOnlyCoins.Status.UNPROVEN) {
+                    replayProtected = false;
                     text = UnifiedSigHashDecision.summaryFor(false);
                     detail = "Every input is this wallet's, each signature was checked, and none opts in, and none of the coins it spends was found to exist only on this chain. These signatures are made the way they always have been, so this transaction can be replayed on the chain that kept SHA256d.";
                 } else {
+                    replayProtected = null;
                     text = UnifiedSigHashDecision.UNCHECKED_SUMMARY;
                     detail = "A final transaction carries no declaration to read, so replay protection can only be shown by checking its signatures against the keys that made them, and this wallet could not check them all."
                             + System.lineSeparator() + System.lineSeparator()
@@ -1683,6 +1694,9 @@ public class HeadersController extends TransactionFormController implements Init
             }
         }
 
+        if(protectedNow) {
+            replayProtected = true;
+        }
         signaturesOptIn.setText(text);
         signaturesOptIn.setGraphic(protectedNow ? GlyphUtils.getSuccessGlyph() : GlyphUtils.getWarningGlyph());
         Tooltip tooltip = new Tooltip(detail);
@@ -1691,6 +1705,50 @@ public class HeadersController extends TransactionFormController implements Init
         tooltip.setMaxWidth(640);
         signaturesOptIn.setTooltip(tooltip);
         signaturesOptIn.setAccessibleHelp(detail);
+    }
+
+    /**
+     * Asks before broadcasting a transaction the screen labelled not replay protected, when it spends coins created before
+     * the fork. Those coins also exist on the chain that kept SHA256d unless already spent there, so a copy broadcast there
+     * moves them too. Nothing is asked where the label could not check, or where every coin was created after the fork.
+     */
+    private boolean confirmUnprotectedBroadcast() {
+        if(!Boolean.FALSE.equals(replayProtected)) {
+            return true;
+        }
+
+        Wallet wallet = headersForm.getSigningWallet() != null ? headersForm.getSigningWallet() : headersForm.getWallet();
+        long preFork = wallet == null ? 0 : preForkInputValue(headersForm.getTransaction(), wallet.getTransactions(), Blake2bDeployment.activationHeight(Network.get()));
+        if(preFork == 0) {
+            return true;
+        }
+
+        ButtonType guide = new ButtonType("Open Guide", ButtonBar.ButtonData.HELP_2);
+        ButtonType broadcast = new ButtonType("Broadcast", ButtonBar.ButtonData.OK_DONE);
+        Optional<ButtonType> optType = AppServices.showWarningDialog("Not replay protected",
+                "This transaction spends " + (Config.get().getUnitFormat() == null ? UnitFormat.DOT : Config.get().getUnitFormat()).formatBtcValue(preFork) + " BTC in coins created before the fork, and it is not replay protected.\n\n"
+                        + "Unless those coins were already spent on the SHA256d chain, anyone can broadcast a copy of this transaction there, "
+                        + "and it would move them to the same recipients.\n\nBroadcast it anyway?",
+                guide, ButtonType.CANCEL, broadcast);
+        if(optType.isPresent() && optType.get() == guide) {
+            AppServices.get().getApplication().getHostServices().showDocument(ForkLinks.SPLIT_GUIDE);
+        }
+        return optType.isPresent() && optType.get() == broadcast;
+    }
+
+    /** The value of the inputs whose coins were mined before the fork, by the wallet's record of the transactions that made them. */
+    static long preForkInputValue(Transaction transaction, Map<Sha256Hash, BlockTransaction> walletTransactions, int activationHeight) {
+        long value = 0;
+        for(TransactionInput input : transaction.getInputs()) {
+            BlockTransaction parent = walletTransactions.get(input.getOutpoint().getHash());
+            if(parent != null && parent.getHeight() > 0 && parent.getHeight() < activationHeight) {
+                int index = (int)input.getOutpoint().getIndex();
+                if(index < parent.getTransaction().getOutputs().size()) {
+                    value += parent.getTransaction().getOutputs().get(index).getValue();
+                }
+            }
+        }
+        return value;
     }
 
     /** Signatures on a final transaction that did not opt in and can be lifted out with their input. */
@@ -1780,6 +1838,12 @@ public class HeadersController extends TransactionFormController implements Init
                     return;
                 }
             }
+        }
+
+        if(!confirmUnprotectedBroadcast()) {
+            broadcastButton.setDisable(false);
+            broadcastButton.requestFocus();
+            return;
         }
 
         if(headersForm.getSigningWallet() instanceof FinalizingPSBTWallet) {
@@ -1963,6 +2027,21 @@ public class HeadersController extends TransactionFormController implements Init
         BitcoinURI currentPayjoinURI = getPayjoinURI();
         if(currentPayjoinURI == null) {
             throw new IllegalStateException("No valid Payjoin URI");
+        }
+
+        //The receiver is handed this transaction signed, and may broadcast it as it stands rather than the payjoin. One set
+        //up for upstream Sparrow follows the SHA256d chain, and unless this transaction is protected it is valid there
+        if(!Boolean.TRUE.equals(replayProtected)) {
+            ButtonType request = new ButtonType("Request Payjoin", ButtonBar.ButtonData.OK_DONE);
+            Optional<ButtonType> optType = AppServices.showWarningDialog("Payjoin without replay protection",
+                    "The payjoin receiver is sent this transaction, signed, and may broadcast it as it is. "
+                            + (Boolean.FALSE.equals(replayProtected) ? "It is not replay protected" : "It could not be shown to be replay protected")
+                            + ", so a receiver on the SHA256d chain could broadcast it there and move the same coins on that chain, if they are still unspent there."
+                            + "\n\nA payment request does not say which chain it is for. Only continue if this receiver follows the BLAKE2b chain.",
+                    ButtonType.CANCEL, request);
+            if(optType.isEmpty() || optType.get() != request) {
+                return;
+            }
         }
 
         Payjoin payjoin = new Payjoin(currentPayjoinURI, headersForm.getSigningWallet(), headersForm.getPsbt());

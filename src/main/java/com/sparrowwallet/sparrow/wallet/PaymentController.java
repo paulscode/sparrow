@@ -32,6 +32,8 @@ import com.sparrowwallet.drongo.dns.DnsPaymentResolver;
 import com.sparrowwallet.sparrow.paynym.PayNym;
 import com.sparrowwallet.sparrow.paynym.PayNymDialog;
 import javafx.application.Platform;
+import tornadofx.control.Field;
+import javafx.beans.binding.Bindings;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleBooleanProperty;
@@ -102,6 +104,15 @@ public class PaymentController extends WalletFormController implements Initializ
 
     @FXML
     private Label dustStatus;
+
+    @FXML
+    private Field requestNoteField;
+
+    @FXML
+    private Label requestNote;
+
+    /** The address as it was filled in from a payment request, which says nothing about the chain it is for. */
+    private final ObjectProperty<String> requestAddressProperty = new SimpleObjectProperty<>();
 
     @FXML
     private ToggleButton maxButton;
@@ -179,6 +190,10 @@ public class PaymentController extends WalletFormController implements Initializ
 
             if(silentPaymentAddressProperty.get() != null && !newValue.equals(silentPaymentAddressProperty.get().getAddress())) {
                 silentPaymentAddressProperty.set(null);
+            }
+
+            if(requestAddressProperty.get() != null && !newValue.equals(requestAddressProperty.get())) {
+                requestAddressProperty.set(null);
             }
 
             if(payjoinURIProperty.get() != null && !newValue.equals(payjoinURIProperty.get().getAddress().toString())) {
@@ -364,6 +379,10 @@ public class PaymentController extends WalletFormController implements Initializ
         }));
 
         address.textProperty().addListener(addressListener);
+        requestNoteField.managedProperty().bind(requestNoteField.visibleProperty());
+        requestNoteField.visibleProperty().bind(Bindings.createBooleanBinding(
+                () -> requestAddressProperty.get() != null || payNymProperty.get() != null || dnsPaymentProperty.get() != null,
+                requestAddressProperty, payNymProperty, dnsPaymentProperty));
         address.setContextMenu(address.getCustomContextMenu(Collections.emptyList()));
         address.setSkin(new AddressTextFieldSkin(address));
 
@@ -839,7 +858,16 @@ public class PaymentController extends WalletFormController implements Initializ
             revalidateAmount();
         }
         setPayjoinURI(bitcoinURI);
+        markFromRequest();
         sendController.updateTransaction();
+    }
+
+    /**
+     * Notes that this payment came from a request: a bitcoin: link, a name or a payment code. None of them says which chain
+     * it is for, and the person who made it most likely expects the SHA256d chain.
+     */
+    public void markFromRequest() {
+        requestAddressProperty.set(address.getText());
     }
 
     public void setPayjoinURI(BitcoinURI bitcoinURI) {
