@@ -206,7 +206,7 @@ This is opt in: for each category below, if the corresponding directory already 
 |----------| -------- |---------------------------------------|
 | Config   | `$XDG_CONFIG_HOME/sparrowblake2b` (default `~/.config/sparrowblake2b`) | `config`, `network-*` markers         |
 | Data     | `$XDG_DATA_HOME/sparrowblake2b` (default `~/.local/share/sparrowblake2b`) | `wallets`, `certs`, `lark`            |
-| State    | `$XDG_STATE_HOME/sparrowblake2b` (default `~/.local/state/sparrowblake2b`) | `sparrow.log`, `tor/work`, lock files |
+| State    | `$XDG_STATE_HOME/sparrowblake2b` (default `~/.local/state/sparrowblake2b`) | `sparrowblake2b.log`, `tor/work`, lock files |
 | Cache    | `$XDG_CACHE_HOME/sparrowblake2b` (default `~/.cache/sparrowblake2b`) | `tor/cache`                           |
 
 Specifying a home folder with the `-d` argument disables XDG resolution entirely, and stores all files in the given folder.
@@ -220,7 +220,7 @@ If the problem is in Sparrow itself rather than in following this chain, it belo
 [upstream](https://github.com/sparrowwallet/sparrow/issues); please reproduce it on an upstream
 build first, so the report is about something they can see.
 
-If possible, look in the sparrow.log file in the configuration directory for information helpful in debugging. 
+If possible, look in the `sparrowblake2b.log` file (Help > Show Log File) for information helpful in debugging. 
 
 ## License
 

@@ -545,7 +545,9 @@ public class AppController implements Initializable {
     }
 
     public void showLogFile(ActionEvent event) throws IOException {
-        File logFile = new File(Storage.getStateHome(), "sparrow.log");
+        //The name logback.xml writes, which is this application's, not upstream's sparrow.log: looking for that one meant
+        //this menu, and every error dialog pointing at it, only ever said the log could not be found
+        File logFile = new File(Storage.getStateHome(), LOG_FILE_NAME);
         if(logFile.exists()) {
             AppServices.get().getApplication().getHostServices().showDocument(logFile.toPath().toUri().toString());
         } else {
@@ -760,7 +762,7 @@ public class AppController implements Initializable {
                 Platform.runLater(() -> {
                     Throwable e = failEvent.getSource().getException();
                     log.error("Error fetching transaction " + txId.toString(), e);
-                    showErrorDialog("Error fetching transaction", "The server returned an error when fetching the transaction. The server response is contained in sparrow.log");
+                    showErrorDialog("Error fetching transaction", "The server returned an error when fetching the transaction. The server response is contained in the log (See Help > Show Log File).");
                 });
             });
             transactionReferenceService.start();
