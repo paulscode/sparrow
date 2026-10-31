@@ -32,11 +32,11 @@ wallet file, without warning. Each is small.
 - **How it goes wrong:** someone with both a SHA256d node and a BLAKE2b node (common on StartOS or
   Umbrel) gives this build the wrong RPC port. Or someone migrating from upstream Sparrow keeps the
   defaults. The wallet then:
-  - shows SHA256d balances as XBT;
+  - shows SHA256d balances as if they were on the BLAKE2b chain;
   - sees a v1 tip, so it signs without the opt-in;
   - broadcasts to the SHA256d node.
 
-  The user moves BTC believing they are moving XBT.
+  The user moves coins on the SHA256d chain believing they are moving them on the BLAKE2b chain.
 - **Proposal:**
   - In Full Node mode, fetch the node's raw header at 961640 (`getblockhash` then
     `getblockheader <hash> false`, the way `BitcoindClient.tipHeader` already does). Run it through
@@ -61,7 +61,7 @@ wallet file, without warning. Each is small.
   - Buttons: Broadcast, Cancel, and Open the split guide. Offer "Don't ask again for this wallet".
   - Never say "safe". Say nothing either way for inputs whose status isn't known.
 
-### 3. Payment requests made for bitcoin get paid in XBT without a word, and payjoin can move BTC — S–M
+### 3. Payment requests made for bitcoin get paid on the BLAKE2b chain without a word, and payjoin can move BTC — S–M
 - **Problem:** several routes into the send screen come from people who almost certainly expect BTC:
   - `bitcoin:` links go straight to the send screen (`AppServices.openBitcoinUri`, around line 1955).
     The new Windows installer offers this app as a `bitcoin:` handler.
@@ -71,8 +71,8 @@ wallet file, without warning. Each is small.
     `payjoin/` has no awareness of the chain.
 - **Proposal:**
   - When a payment came from a URI, a BIP353 name, PayNym or payjoin, show a persistent note on the
-    send screen: "This request doesn't say which chain it is for. It will be paid in XBT on the
-    BLAKE2b chain."
+    send screen: "This request doesn't say which chain it is for. It will be paid on the BLAKE2b
+    chain."
   - Only offer Payjoin when the original transaction is replay protected.
   - Longer term, propose a URI parameter that marks a request as BLAKE2b.
 
@@ -194,7 +194,7 @@ Each is small and fixes a gap, a contradiction with the docs, or a confusing mom
 - **Wording:** "Supported by this device" and "pre-fork rules" are jargon. Software seed wallets show
   no protection row at all (`wallet/KeystoreController.java:423`).
 
-### 13. Fee defaults that suit this chain — S (a, c), M (b)
+### 13. Fee defaults that suit this chain — S (a), M (b)
 - **(a) Fallback fee:** the mainnet fallback is 20 sat/vB (`AppServices.java:130`). It is used offline
   and before the first connection. The guide quotes 1 sat/vB fees on this chain, so transactions built
   offline overpay about 20 times without saying so.
@@ -205,10 +205,6 @@ Each is small and fixes a gap, a contradiction with the docs, or a confusing mom
     with no rates (`net/ElectrumServer.java:2515`, `:2553-2567`; `net/FeeRatesSource.java:223`).
   - **Proposal:** derive a next-block rate from `mempool.get_fee_histogram`, which is already fetched.
     Default to Target Blocks when the server has no block statistics.
-- **(c) Wording assumes 10-minute blocks:** "in about 10 minutes" (`control/RecentBlocksView.java:103`)
-  and "within minutes" / "an hour or two" (`SendController.java:1007-1018`). This chain averages about
-  515 s.
-  - **Proposal:** base the wording on the chain's actual block interval.
 
 ### 14. Explain this chain's broadcast rejections in plain words — S
 - **Problem:** `HeadersController.java:1855-1890` explains only min relay fee, dust, `missingorspent`
@@ -432,13 +428,6 @@ between them.
 - **Rewards mined here:** when every input is a reward mined on this chain after the fork, add a
   neutral "mined on this chain" note, without claiming protection.
 
-### 32. Show "XBT" instead of "BTC" — M
-- **Problem:** the unit is `BTC` (`drongo/.../BitcoinUnit.java:17`), and there are about 21 hardcoded
-  " BTC" strings. Fiat is priced as BTCB2, and the docs say XBT. With upstream Sparrow open beside
-  this app, the two show the same addresses with different balances, all labelled BTC.
-- **Proposal:** change the display label only. Amounts in PSBTs, QR codes and URIs stay the same.
-- **Cost:** upstream merges touch these strings.
-
 ### 33. Replay context in the history and on Receive — M
 - **Transactions tab:**
   - Mark outgoing transactions as protected, not protected or unknown, with "also valid on the
@@ -472,6 +461,13 @@ between them.
   guide promises and what the app shows.
 - **Ongoing:** #27 to #34 as time allows. #29 and #30 are the long-term answer to the chain's rules
   changing under users.
+
+## Declined
+
+- **Block-time wording (was 13c):** the difficulty adjustment pulls the chain back to 10-minute
+  blocks, so wording based on today's faster interval would only be right for a while.
+- **Showing "XBT" instead of "BTC" (was 32):** XBT is an exchange ticker, needed only because BTC was
+  taken. BTC is the unit of account on this chain too. Item numbers are kept, so 32 is skipped.
 
 ## Already handled (checked, not proposed)
 
