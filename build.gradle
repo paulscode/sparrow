@@ -357,7 +357,9 @@ jlink {
             //The release is the package revision, so apt and dnf order 2.5.6-8 above 2.5.6-7. After Shrike's bb86638d
             installerOptions.addAll(['--resource-dir', layout.buildDirectory.dir('deploy/package').get().asFile.toString(), '--linux-app-category', 'utils', '--linux-app-release', "${releaseNumber}",
                                      '--linux-rpm-license-type', 'ASL 2.0', '--linux-deb-maintainer', 'paul@paulscode.com'])
-            imageOptions.addAll(['--icon', 'src/main/deploy/package/linux/Sparrow.png', '--resource-dir', 'src/main/deploy/package/linux/'])
+            //Named for the launcher: building the deb and rpm, jpackage looks for <launcher>.png in the resource dir, and
+            //without it replaces the image's icon with its own default
+            imageOptions.addAll(['--icon', 'src/main/deploy/package/linux/sparrow.png', '--resource-dir', 'src/main/deploy/package/linux/'])
         }
         if(os.macOsX) {
             //Upstream signs and notarizes with its own Apple Developer ID, which is not ours to use, so signing is not
