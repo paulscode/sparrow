@@ -76,6 +76,16 @@ jobs:
         shell: bash
         run: .github/scripts/check-linux-packages.sh sparrowwallet-blake2b
 
+      # jpackage derives each component GUID from the file's path inside the app, which this app shares with upstream
+      # Sparrow, so its installer's components were upstream's. Rekeyed to GUIDs of this fork's own: see the script.
+      - name: Give the Windows installer's components this fork's own GUIDs
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem build/jpackage -Filter *.msi | Select-Object -First 1
+          if(-not $msi) { Get-ChildItem build/jpackage; throw "no .msi produced" }
+          ./.github/scripts/rekey-msi-components.ps1 -Msi $msi.FullName
+
       # jpackage names the .msi from the app name and its version, which on Windows is the ProductVersion the release is
       # folded into (2.5.6-blake2b.8 is 2.5.6008). It takes the release the app reports, as the other artifacts do.
       - name: Name the Windows installer for its release
