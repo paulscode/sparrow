@@ -196,7 +196,10 @@ public class ServerTestDialog extends DialogWindow {
 
     private void showConnectionFailure(Throwable exception) {
         String reason = exception.getCause() != null ? exception.getCause().getMessage() : exception.getMessage();
-        if(exception instanceof TlsServerException && exception.getCause() != null) {
+        ChainMismatchException chainMismatch = ChainMismatchException.find(exception);
+        if(chainMismatch != null) {
+            reason = chainMismatch.getMessage() + "\n\n" + ChainMismatchException.REMEDY + "\n\nSee " + ChainMismatchException.CONNECTING_URL;
+        } else if(exception instanceof TlsServerException && exception.getCause() != null) {
             TlsServerException tlsServerException = (TlsServerException)exception;
             if(exception.getCause().getMessage().contains("PKIX path building failed")) {
                 File configCrtFile = Config.get().getElectrumServerCert();
@@ -223,7 +226,7 @@ public class ServerTestDialog extends DialogWindow {
         } else if(exception instanceof ProxyServerException) {
             reason += ". Check if the proxy server is running.";
         } else if(reason != null && reason.contains("Check if the node is running")) {
-            reason += "\n\nSee https://sparrowwallet.com/docs/connect-node.html";
+            reason += "\n\nSee " + ChainMismatchException.CONNECTING_URL;
         }
 
         testStatus.setText("Failed");

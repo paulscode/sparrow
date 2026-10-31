@@ -360,6 +360,17 @@ public class SimpleElectrumServerRpc implements ElectrumServerRpc {
     }
 
     @Override
+    public String getBlockHeader(Transport transport, int height) {
+        try {
+            JsonRpcClient client = new JsonRpcClient(transport);
+            return new RetryLogic<String>(MAX_RETRIES, RETRY_DELAY, List.of(IllegalStateException.class, IllegalArgumentException.class)).getResult(() ->
+                    client.createRequest().returnAs(String.class).method("blockchain.block.header").id(idCounter.incrementAndGet()).params(height).execute());
+        } catch(Exception e) {
+            throw new ElectrumServerRpcException("Failed to retrieve the block header at height " + height, e);
+        }
+    }
+
+    @Override
     public BlockHeaders getBlockHeadersChunk(Transport transport, int startHeight, int count) {
         try {
             JsonRpcClient client = new JsonRpcClient(transport);

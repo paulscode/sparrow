@@ -1680,7 +1680,18 @@ public class ElectrumServer {
         }
 
         try {
-            return VariableHeaders.singleHeaderHex(electrumServerRpc.getBlockHeadersChunk(getTransport(), height, 1));
+            String header = VariableHeaders.singleHeaderHex(electrumServerRpc.getBlockHeadersChunk(getTransport(), height, 1));
+            if(header != null) {
+                return header;
+            }
+        } catch(Exception e) {
+            log.debug("Server did not serve the block headers from height " + height, e);
+        }
+
+        //Asked again with the single header call, which every server has. Cormorant, behind the Full Node mode, serves
+        //only this one, and without it a node on either chain could not be told apart.
+        try {
+            return electrumServerRpc.getBlockHeader(getTransport(), height);
         } catch(Exception e) {
             log.debug("Server did not serve the block header at height " + height, e);
             return null;
@@ -3509,14 +3520,12 @@ public class ElectrumServer {
 
                         //Refuse a server on the other side of the chain split. On mainnet the two chains share a genesis block, a
                         //network name and an address format, so every other check here passes against either, and the wallet would
-                        //show balances and confirmations for a chain the user did not choose. Not applied to a Bitcoin Core
-                        //connection: there the server is the user's own node and which chain it follows is a decision they already
-                        //made when they configured it.
-                        if(Config.get().getServerType() != ServerType.BITCOIN_CORE) {
-                            String chainError = VariableHeaders.getChainMismatchError(features, electrumServer.getChainIdentityHeader());
-                            if(chainError != null) {
-                                throw new ServerException(chainError);
-                            }
+                        //show balances and confirmations for a chain the user did not choose. Applied to the Full Node mode too:
+                        //the node is the user's own, but its defaults are a stock Bitcoin Core install's, and a node on the other
+                        //chain is the easiest mistake to make when both run on the same machine.
+                        String chainError = VariableHeaders.getChainMismatchError(features, electrumServer.getChainIdentityHeader());
+                        if(chainError != null) {
+                            throw new ChainMismatchException(chainError);
                         }
 
                         if(isVerificationMandatory() && !serverCapability.supportsMerkleProofs()) {

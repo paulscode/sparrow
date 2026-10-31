@@ -1,6 +1,7 @@
 package com.sparrowwallet.sparrow.event;
 
 import com.github.arteam.simplejsonrpc.client.exception.JsonRpcException;
+import com.sparrowwallet.sparrow.net.ChainMismatchException;
 import com.sparrowwallet.sparrow.net.TlsServerException;
 
 public class ConnectionFailedEvent {
@@ -15,6 +16,10 @@ public class ConnectionFailedEvent {
     }
 
     public String getMessage() {
+        if(ChainMismatchException.find(exception) != null) {
+            return ChainMismatchException.SHORT_MESSAGE;
+        }
+
         if(exception instanceof TlsServerException) {
             return exception.getMessage();
         }

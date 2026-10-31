@@ -138,6 +138,24 @@ not just new ones. If a change is genuinely needed it has to be a new migration 
 `MigrationVersionsTest` enforces both: it fails the build on a duplicate version, and it pins every
 shipped migration by content hash.
 
+## Connecting to a server
+
+This build has no public servers, so it needs a server of your own that follows the BLAKE2b chain.
+There are two ways to connect, both under File > Settings > Server:
+
+- **Private Electrum:** an Electrum server such as electrs or Fulcrum, backed by a BLAKE2b node.
+  This is what StartOS and Umbrel provide. Enter its address and port (usually 50001 without SSL,
+  or 50002 with it). An onion address works with Tor.
+- **Full Node:** a BLAKE2b node directly, over its RPC interface, with `server=1` in its config.
+  The defaults are a stock node's on this computer: `127.0.0.1`, the default port, and cookie
+  authentication from the default data folder. A node elsewhere needs its address and a user and
+  password.
+
+Either way the server has to follow the BLAKE2b chain. A node or Electrum server set up for upstream
+Sparrow follows the SHA256d chain, and this build refuses it on connecting: it reads the block
+header at the fork height and checks it against the block this chain mined there. A successful
+connection means that check passed.
+
 ## Running
 
 If you prefer to run it directly from source, it can be launched from within the project directory with

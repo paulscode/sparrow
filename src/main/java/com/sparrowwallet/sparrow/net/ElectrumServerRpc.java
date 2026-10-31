@@ -121,6 +121,13 @@ public interface ElectrumServerRpc {
     BlockHeaders getBlockHeadersChunk(Transport transport, int startHeight, int count);
 
     /**
+     * Retrieves the header at one height as hex with blockchain.block.header, which every server serves, including the
+     * Full Node mode's Cormorant, which does not serve blockchain.block.headers. Throws ElectrumServerRpcException if the
+     * server does not answer with one.
+     */
+    String getBlockHeader(Transport transport, int height);
+
+    /**
      * Retrieves several runs of consecutive block headers, keyed by start height. A range the server errors on, or whose response fails the
      * checks getBlockHeadersChunk applies, is omitted from the result rather than failing the others.
      */

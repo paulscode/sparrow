@@ -5,6 +5,7 @@ import com.github.arteam.simplejsonrpc.core.annotation.JsonRpcMethod;
 import com.github.arteam.simplejsonrpc.core.annotation.JsonRpcOptional;
 import com.github.arteam.simplejsonrpc.core.annotation.JsonRpcParam;
 import com.github.arteam.simplejsonrpc.core.annotation.JsonRpcService;
+import com.sparrowwallet.drongo.protocol.BlockHeaderV2;
 import com.sparrowwallet.drongo.protocol.Sha256Hash;
 import com.sparrowwallet.sparrow.EventManager;
 import com.sparrowwallet.sparrow.SparrowWallet;
@@ -13,6 +14,7 @@ import com.sparrowwallet.drongo.Version;
 import com.sparrowwallet.sparrow.net.BlockStats;
 import com.sparrowwallet.sparrow.net.ElectrumServer;
 import com.sparrowwallet.sparrow.net.ServerFeatures;
+import com.sparrowwallet.sparrow.net.VariableHeaders;
 import com.sparrowwallet.sparrow.net.cormorant.Cormorant;
 import com.sparrowwallet.sparrow.net.cormorant.bitcoind.*;
 import com.sparrowwallet.sparrow.net.cormorant.index.TxEntry;
@@ -66,9 +68,45 @@ public class ElectrumServerService {
             features.protocol_min = MIN_VERSION.get();
             features.protocol_max = MAX_VERSION.get();
             features.pruning = bitcoindClient.isPruned() ? bitcoindClient.getPruneHeight() : null;
+            features.blake2b_fork = getBlake2bFork(bitcoindClient.getBitcoindService());
             return features;
         } catch(IllegalStateException e) {
             throw new BitcoindIOException(e);
+        }
+    }
+
+    /**
+     * The fork point as the node shows it, or null where the node's chain does not change proof of work there.
+     *
+     * <p>Reported only when the node's own headers show it: 164 bytes at this build's activation height and 80 bytes
+     * just below it. The hash is the node's, so the client's check of it against the pinned hash is a real one. A node on
+     * the chain that kept SHA256d reports nothing here, and serves an 80 byte header at that height, which is what the
+     * client refuses it on.
+     */
+    static ServerFeatures.Blake2bFork getBlake2bFork(BitcoindClientService node) {
+        int height = VariableHeaders.chainIdentityHeight();
+        if(height < 1) {
+            return null;
+        }
+
+        try {
+            String hash = node.getBlockHash(height);
+            String header = node.getBlockHeader(hash, false);
+            String parent = node.getBlockHeader(node.getBlockHash(height - 1), false);
+            if(header.length() / 2 != BlockHeaderV2.HEADER_V2_LENGTH || parent.length() / 2 != BlockHeaderV2.HEADER_V1_LENGTH) {
+                return null;
+            }
+
+            ServerFeatures.Blake2bFork fork = new ServerFeatures.Blake2bFork();
+            fork.height = height;
+            fork.hash = hash;
+            fork.header_bytes = BlockHeaderV2.HEADER_V2_LENGTH;
+            fork.block_hash = "blake2b";
+            return fork;
+        } catch(JsonRpcException | IllegalStateException e) {
+            //The node has no block at that height yet, or could not be asked
+            log.debug("Could not read the node's headers at height " + height, e);
+            return null;
         }
     }
 

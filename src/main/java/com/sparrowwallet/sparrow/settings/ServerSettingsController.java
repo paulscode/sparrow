@@ -696,7 +696,10 @@ public class ServerSettingsController extends SettingsDetailController {
             reason = exception.getCause() != null ? exception.getCause().getMessage() : exception.getMessage();
         }
 
-        if(exception instanceof TlsServerException && exception.getCause() != null) {
+        ChainMismatchException chainMismatch = ChainMismatchException.find(exception);
+        if(chainMismatch != null) {
+            reason = chainMismatch.getMessage() + "\n\n" + ChainMismatchException.REMEDY + "\n\nSee " + ChainMismatchException.CONNECTING_URL;
+        } else if(exception instanceof TlsServerException && exception.getCause() != null) {
             TlsServerException tlsServerException = (TlsServerException)exception;
             if(exception.getCause().getMessage().contains("PKIX path building failed")) {
                 File configCrtFile = Config.get().getElectrumServerCert();
@@ -723,7 +726,7 @@ public class ServerSettingsController extends SettingsDetailController {
         } else if(exception instanceof ProxyServerException) {
             reason += ". Check if the proxy server is running.";
         } else if(reason != null && (reason.contains("Check if the node is running") || reason.contains("Could not connect to the node's RPC"))) {
-            reason += "\n\nSee https://sparrowwallet.com/docs/connect-node.html";
+            reason += "\n\nSee " + ChainMismatchException.CONNECTING_URL;
         } else if(reason != null && (reason.startsWith("Cannot connect to hidden service"))) {
             reason += " on the server. Check that the onion address and port are correct, and that both Tor and the Electrum server are running on the node. Usually SSL is not enabled, and the port is 50001.";
         } else if(reason != null && (reason.startsWith("Cannot find the node's cookie file at"))) {
