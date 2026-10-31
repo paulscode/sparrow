@@ -12,6 +12,45 @@ everything here is specific to this fork. Items marked *general* would apply to 
 Paths are relative to `src/main/java/com/sparrowwallet/sparrow/` unless they start with `drongo/`,
 `lark/`, `src/main/resources/` or `docs/`.
 
+## Status
+
+Done on the `installers` branch, for the next release (2.5.6-blake2b.8):
+
+- **#1:** Full Node mode is checked too.
+  - Cormorant reports its node's fork point, but only when its headers change format at 961640.
+  - The identity check falls back to `blockchain.block.header`, which Cormorant serves.
+  - Still to do: test against a live Knots node.
+- **#2:** broadcasting a transaction labelled "Not replay protected" that spends coins created before
+  the fork now asks first. Nothing is asked when the label could not check.
+  - Not done: "don't ask again for this wallet".
+- **#3:**
+  - Requesting a payjoin without replay protection now asks first.
+  - The send screen notes when a payment came from a `bitcoin:` link, a name or a payment code.
+- **#4:** upstream Sparrow's wallets are copied into this app's wallets folder, never opened in place.
+- **#5:** `ChainMismatchException` is a configuration error, so it is not retried.
+  - The refusal is shown once, as a dialog, with what to do.
+  - The status bar uses a short form.
+  - Test Connection shows the remedy and the new README section, "Connecting to a server".
+- **#6:**
+  - Help menu: fork documentation, the split guide, and upstream documentation as a separate item.
+  - Bug reports go to the fork's issues page, prefilled with version, network, OS and server type.
+    Issues must be enabled on paulscode/sparrow for that to work.
+  - About and Welcome now describe this build.
+  - Not done: links from the protection tooltips. Tooltips can't hold links, so this waits for #34's
+    Details dialog.
+- **#8:** "Insufficient funds" names the immature amount, as the fee field already did.
+- **#12:**
+  - The marking dialog lists watch-only keystores, names the firmware known to support the opt-in,
+    and links the split guide for stock firmware.
+  - "Pre-fork rules" is now "the SHA256d chain", and the keystore row's wording is plainer.
+  - Not done: software seeds still show no protection row.
+- **#18:**
+  - First-run Settings offers Import Wallet.
+  - With no server configured, the status bar says so and links to Server Settings.
+  - Discover Wallet is hidden in Full Node mode.
+  - The fee and fiat settings help text is accurate.
+  - The log records the build at startup, and Cormorant's version carries the suffix.
+
 ---
 
 ## Tier 1: Close real ways to lose money
