@@ -23,7 +23,8 @@ public class ForkLinksTest {
     @Test
     public void theReadmeHasTheSectionTheConnectionHintsLinkTo() throws Exception {
         Assertions.assertTrue(ForkLinks.CONNECTING.endsWith("#connecting-to-a-server"));
-        Assertions.assertTrue(Files.readString(Path.of("README.md")).contains("\n## Connecting to a server\n"));
+        //By line, since a Windows checkout ends them differently
+        Assertions.assertTrue(Files.readAllLines(Path.of("README.md")).contains("## Connecting to a server"));
         Assertions.assertTrue(Files.exists(Path.of("docs/split-with-a-hardware-wallet.md")), "the split guide link must resolve");
     }
 

@@ -130,11 +130,25 @@ public final class UpstreamWallets {
         return destination;
     }
 
+    /**
+     * The path with its links and short names resolved, as far as it exists. A file not yet there is resolved through
+     * the nearest folder that is, so that it compares like upstream's folders do: macOS keeps temporary and some home
+     * folders behind a link, and Windows can name a folder by its short name.
+     */
     private static Path resolve(Path path) {
+        Path absolute = path.toAbsolutePath().normalize();
+        Path existing = absolute;
+        while(existing != null && !Files.exists(existing)) {
+            existing = existing.getParent();
+        }
+        if(existing == null) {
+            return absolute;
+        }
+
         try {
-            return path.toRealPath();
+            return existing.toRealPath().resolve(existing.relativize(absolute));
         } catch(IOException e) {
-            return path.toAbsolutePath().normalize();
+            return absolute;
         }
     }
 }

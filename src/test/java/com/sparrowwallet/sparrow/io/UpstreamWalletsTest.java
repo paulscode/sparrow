@@ -29,6 +29,22 @@ public class UpstreamWalletsTest {
         Assertions.assertFalse(UpstreamWallets.isUpstreamFile(ours.resolve("hot.mv.db").toFile(), upstreamHomes, ours), "a name that merely starts the same");
     }
 
+    /**
+     * A file not yet on disk, under a folder reached through a link, as macOS's temporary and some home folders are,
+     * and as a short name on Windows is. It compared unresolved against upstream's folders resolved, and slipped past.
+     */
+    @Test
+    public void recognisesFilesThroughALinkedFolder() throws IOException {
+        Path real = Files.createDirectories(home.resolve("real"));
+        Path linked = Files.createSymbolicLink(home.resolve("linked"), real);
+        Path upstream = Files.createDirectories(linked.resolve(".sparrow/wallets"));
+        Path ours = Files.createDirectories(linked.resolve(".sparrowblake2b/wallets"));
+
+        Assertions.assertTrue(UpstreamWallets.isUpstreamFile(upstream.resolve("not-yet.mv.db").toFile(), List.of(real.resolve(".sparrow")), ours));
+        Assertions.assertTrue(UpstreamWallets.isUpstreamFile(real.resolve(".sparrow/wallets/not-yet.mv.db").toFile(), List.of(linked.resolve(".sparrow")), ours));
+        Assertions.assertFalse(UpstreamWallets.isUpstreamFile(real.resolve(".sparrowblake2b/wallets/not-yet.mv.db").toFile(), List.of(linked.resolve(".sparrow")), ours));
+    }
+
     /** A home given with --dir inside upstream's folder holds this build's own wallets, which open in place as always. */
     @Test
     public void thisBuildsOwnWalletsAreNeverUpstreams() throws IOException {
