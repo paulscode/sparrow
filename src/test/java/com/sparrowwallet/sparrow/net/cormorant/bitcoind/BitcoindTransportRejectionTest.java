@@ -8,12 +8,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Path;
 import java.time.Duration;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -44,6 +47,20 @@ public class BitcoindTransportRejectionTest {
     @Test
     public void resetConnectionPointsToRpcAllowIp() throws Exception {
         assertRpcAllowIpHint(true);
+    }
+
+    /** A port nothing listens on is a node that is not running, not one refusing this address, and says so. */
+    @Test
+    public void refusedConnectionIsNotBlamedOnRpcAllowIp() throws Exception {
+        int port;
+        try(ServerSocket serverSocket = new ServerSocket(0, 50, InetAddress.getLoopbackAddress())) {
+            port = serverSocket.getLocalPort();
+        }
+
+        BitcoindTransport transport = new BitcoindTransport(new Server("http://127.0.0.1:" + port), "test", "user:pass");
+        IOException thrown = assertThrows(IOException.class, () -> transport.pass("{\"id\":1,\"method\":\"getblockchaininfo\",\"params\":[]}"));
+        assertInstanceOf(ConnectException.class, thrown);
+        assertFalse(thrown.getMessage() != null && thrown.getMessage().contains("rpcallowip"), thrown.toString());
     }
 
     private static void assertRpcAllowIpHint(boolean reset) throws Exception {

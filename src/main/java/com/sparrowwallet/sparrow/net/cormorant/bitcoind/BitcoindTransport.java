@@ -108,6 +108,12 @@ public class BitcoindTransport implements Transport {
         try(OutputStream os = connection.getOutputStream()) {
             byte[] jsonBytes = request.getBytes(StandardCharsets.UTF_8);
             os.write(jsonBytes);
+        } catch(ConnectException | NoRouteToHostException e) {
+            throw e;
+        } catch(SocketException e) {
+            //The same rpcallowip refusal, arriving while the connection was still being made: the node accepted and reset it
+            //before the request could be sent. Refused or unreachable is a node that is not there, and is left as it was
+            throw new IOException("The node at " + bitcoindUrl.getAuthority() + " closed the connection without responding, check its rpcallowip settings", e);
         }
 
         int statusCode;
