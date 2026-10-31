@@ -541,7 +541,15 @@ public class AppController implements Initializable {
     }
 
     public void showDocumentation(ActionEvent event) {
-        AppServices.get().getApplication().getHostServices().showDocument("https://sparrowwallet.com/docs");
+        AppServices.get().getApplication().getHostServices().showDocument(ForkLinks.README);
+    }
+
+    public void showSplitGuide(ActionEvent event) {
+        AppServices.get().getApplication().getHostServices().showDocument(ForkLinks.SPLIT_GUIDE);
+    }
+
+    public void showUpstreamDocumentation(ActionEvent event) {
+        AppServices.get().getApplication().getHostServices().showDocument(ForkLinks.UPSTREAM_DOCS);
     }
 
     public void showLogFile(ActionEvent event) throws IOException {
@@ -555,22 +563,25 @@ public class AppController implements Initializable {
         }
     }
 
-    public void openSupport(ActionEvent event) {
-        AppServices.get().getApplication().getHostServices().showDocument("https://sparrowwallet.com/opensupport");
+    public void submitBugReport(ActionEvent event) {
+        ButtonType openType = new ButtonType("Open Issue", ButtonBar.ButtonData.YES);
+        Optional<ButtonType> optResponse = showWarningDialog("Submit Bug Report", "Bug reports for " + SparrowWallet.APP_DISPLAY_NAME
+                + " go to its own repository, not upstream Sparrow's, which does not maintain this build.\n\n"
+                + "The log file (Help > Show Log File) often helps. Read it before attaching it, as it can include addresses and transaction IDs.",
+                ButtonType.CANCEL, openType);
+
+        if(optResponse.isPresent() && optResponse.get() == openType) {
+            AppServices.get().getApplication().getHostServices().showDocument(ForkLinks.newIssue(bugReportDetails()));
+        }
     }
 
-    public void submitBugReport(ActionEvent event) {
-        ButtonType supportType = new ButtonType("Get Support", ButtonBar.ButtonData.LEFT);
-        ButtonType bugType = new ButtonType("Submit Bug Report", ButtonBar.ButtonData.YES);
-        Optional<ButtonType> optResponse = showWarningDialog("Submit Bug Report", "Please note that this facility is for bug reports and feature requests only. There is a community of Sparrow users who can assist with support requests.", supportType, bugType);
-
-        if(optResponse.isPresent()) {
-            if(optResponse.get() == bugType) {
-                AppServices.get().getApplication().getHostServices().showDocument("https://sparrowwallet.com/submitbugreport");
-            } else {
-                openSupport(event);
-            }
-        }
+    /** What every report needs and few include: which build, which network, which platform, which kind of server. */
+    static String bugReportDetails() {
+        return "Version: " + SparrowWallet.APP_VERSION + SparrowWallet.APP_VERSION_SUFFIX + "\n"
+                + "Network: " + Network.get() + "\n"
+                + "OS: " + System.getProperty("os.name") + " " + System.getProperty("os.version") + " (" + System.getProperty("os.arch") + ")\n"
+                + "Server type: " + (Config.get().getServerType() == null ? "none" : Config.get().getServerType().getName()) + "\n\n"
+                + "What happened:\n\n";
     }
 
     public void showAbout(ActionEvent event) {
@@ -3210,7 +3221,15 @@ public class AppController implements Initializable {
     public void disconnection(DisconnectionEvent event) {
         serverToggle.setDisable(false);
         if(!AppServices.isConnecting() && !AppServices.isConnected() && !statusBar.getText().startsWith(CONNECTION_FAILED_PREFIX) && !statusBar.getText().contains(TRYING_ANOTHER_SERVER_MESSAGE)) {
-            statusUpdated(new StatusEvent("Disconnected (click toggle on the right to connect)", 240));
+            if(Config.get().hasServer()) {
+                statusUpdated(new StatusEvent("Disconnected (click toggle on the right to connect)", 240));
+            } else {
+                //This build has no public servers to fall back on, so without one of the user's own the toggle is
+                //disabled, and asking for a click on it would be no help
+                Hyperlink serverSettings = new Hyperlink("Server Settings");
+                serverSettings.setOnAction(this::openServerSettings);
+                statusUpdated(new StatusEvent("No server configured", serverSettings, 240));
+            }
         }
         if(statusTimeline == null || statusTimeline.getStatus() != Animation.Status.RUNNING) {
             statusBar.setProgress(0);

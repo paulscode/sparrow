@@ -50,6 +50,7 @@ public class SparrowDesktop extends Application {
         AppServices.forwardEscapeFromClosedMenuButtons();
 
         boolean createNewWallet = false;
+        boolean importWallet = false;
         Mode mode = Config.get().getMode();
         if(mode == null) {
             WelcomeDialog welcomeDialog = new WelcomeDialog();
@@ -62,6 +63,7 @@ public class SparrowDesktop extends Application {
                     SettingsDialog settingsDialog = new SettingsDialog(SettingsGroup.SERVER, true);
                     Optional<Boolean> optNewWallet = settingsDialog.showAndWait();
                     createNewWallet = optNewWallet.isPresent() && optNewWallet.get();
+                    importWallet = optNewWallet.isPresent() && !optNewWallet.get();
                 } else if(Network.get() == Network.MAINNET && PublicElectrumServer.supportedNetwork()) {
                     //Guarded, because the list is empty on this chain: no public server indexes it. Without
                     //the guard nextInt(0) throws and takes first run with it, and picking one anyway would
@@ -90,10 +92,13 @@ public class SparrowDesktop extends Application {
         AppController appController = AppServices.newAppWindow(stage);
 
         final boolean showNewWallet = createNewWallet;
+        final boolean showImportWallet = importWallet;
         //Delay opening new dialogs on Wayland
         AppServices.runAfterDelay(AppServices.isOnWayland() ? 1000 : 0, () -> {
             if(showNewWallet) {
                 appController.newWallet(null);
+            } else if(showImportWallet) {
+                appController.importWallet(null);
             }
 
             List<File> recentWalletFiles = Config.get().getRecentWalletFiles();

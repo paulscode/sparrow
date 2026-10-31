@@ -40,6 +40,10 @@ public class AboutController {
         stage.close();
     }
 
+    public void openRepository(ActionEvent event) {
+        AppServices.get().getApplication().getHostServices().showDocument(ForkLinks.REPOSITORY);
+    }
+
     public void openDonate(ActionEvent event) {
         AppServices.get().getApplication().getHostServices().showDocument("https://sparrowwallet.com/donate");
     }

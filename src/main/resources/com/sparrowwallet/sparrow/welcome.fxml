@@ -15,7 +15,7 @@
     <VBox spacing="20">
         <HBox styleClass="title-area">
             <HBox alignment="CENTER_LEFT">
-                <Label fx:id="title" text="Welcome to Sparrow" styleClass="title-label" />
+                <Label fx:id="title" text="Welcome to Sparrow (BLAKE2b)" styleClass="title-label" />
             </HBox>
             <Region HBox.hgrow="ALWAYS"/>
             <DialogImage type="SPARROW" AnchorPane.rightAnchor="0"/>
@@ -27,7 +27,7 @@
                         <Glyph fontFamily="Font Awesome 5 Free Solid" fontSize="20" icon="TOGGLE_OFF" styleClass="title-icon" />
                     </graphic>
                 </Label>
-                <Label text="Sparrow is a Bitcoin wallet with a focus on security and usability." wrapText="true" styleClass="content-text" />
+                <Label text="Sparrow (BLAKE2b) is a Bitcoin wallet for the BLAKE2b chain, which split from the SHA256d chain at block 961,640." wrapText="true" styleClass="content-text" />
                 <Label text="Sparrow can operate in both an online and offline mode. In the online mode it connects to a server to display transaction history. In the offline mode it is useful as a transaction editor and as an airgapped multisig coordinator." wrapText="true" styleClass="content-text" />
                 <Label text="The status bar at the bottom displays the connection status, as demonstrated below:" wrapText="true" styleClass="content-text" />
             </VBox>
@@ -37,7 +37,7 @@
                         <Glyph fontFamily="Font Awesome 5 Free Solid" fontSize="20" icon="TOGGLE_ON" styleClass="title-icon" />
                     </graphic>
                 </Label>
-                <Label text="If you are running your own full node, you can configure Sparrow to connect to it directly. " wrapText="true" styleClass="content-text" />
+                <Label text="If you are running your own BLAKE2b full node, you can configure Sparrow to connect to it directly. A node on the SHA256d chain is refused." wrapText="true" styleClass="content-text" />
                 <Label text="This means you are not sharing your transaction data, but be aware the node stores your balance, transactions and public keys unencrypted, which is not ideal for true cold storage." wrapText="true" styleClass="content-text" />
                 <Label text="A green toggle means you are connected to a full node." wrapText="true" styleClass="content-text" />
             </VBox>
@@ -47,7 +47,7 @@
                         <Glyph fontFamily="Font Awesome 5 Free Solid" fontSize="20" icon="TOGGLE_ON" styleClass="title-icon" />
                     </graphic>
                 </Label>
-                <Label text="The most private way to connect is to your own Electrum server, which in turn connects to your full node." wrapText="true" styleClass="content-text" />
+                <Label text="The most private way to connect is to your own Electrum server, which in turn connects to your BLAKE2b full node. StartOS and Umbrel both provide one." wrapText="true" styleClass="content-text" />
                 <Label text="Because these servers index all Bitcoin transactions equally, your wallet transactions are never stored on the server in an identifiable way, and your server forgets your requests immediately after serving them." wrapText="true" styleClass="content-text" />
                 <Label text="A blue toggle means you are connected to a private Electrum server. You're now ready to configure a server and start using Sparrow!" wrapText="true" styleClass="content-text" />
             </VBox>

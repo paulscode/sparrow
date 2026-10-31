@@ -163,10 +163,12 @@
                 <Menu fx:id="helpMenu" mnemonicParsing="false" text="Help">
                     <MenuItem mnemonicParsing="false" text="Show Introduction" onAction="#showIntroduction"/>
                     <MenuItem mnemonicParsing="false" text="Show Online Documentation" onAction="#showDocumentation"/>
+                    <MenuItem mnemonicParsing="false" text="Splitting a Hardware Wallet" onAction="#showSplitGuide"/>
+                    <MenuItem mnemonicParsing="false" text="Upstream Sparrow Documentation" onAction="#showUpstreamDocumentation"/>
+                    <SeparatorMenuItem />
                     <MenuItem mnemonicParsing="false" text="Show Log File" onAction="#showLogFile"/>
-                    <MenuItem mnemonicParsing="false" text="Get Support" onAction="#openSupport"/>
                     <MenuItem mnemonicParsing="false" text="Submit Bug Report" onAction="#submitBugReport"/>
-                    <MenuItem styleClass="osxHide" mnemonicParsing="false" text="About Sparrow" onAction="#showAbout"/>
+                    <MenuItem styleClass="osxHide" mnemonicParsing="false" text="About Sparrow (BLAKE2b)" onAction="#showAbout"/>
                 </Menu>
             </menus>
         </MenuBar>

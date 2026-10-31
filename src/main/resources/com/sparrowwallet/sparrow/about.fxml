@@ -7,7 +7,7 @@
 <?import javafx.scene.layout.*?>
 <?import com.sparrowwallet.sparrow.control.DialogImage?>
 
-<StackPane prefHeight="460.0" prefWidth="600.0" stylesheets="@about.css, @general.css" fx:controller="com.sparrowwallet.sparrow.AboutController" xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml">
+<StackPane prefHeight="520.0" prefWidth="600.0" stylesheets="@about.css, @general.css" fx:controller="com.sparrowwallet.sparrow.AboutController" xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml">
     <VBox spacing="20">
         <HBox styleClass="title-area">
             <HBox alignment="CENTER_LEFT">
@@ -18,9 +18,11 @@
         </HBox>
         <VBox spacing="10" styleClass="content-area">
             <Label text="Sparrow is a Bitcoin wallet with the goal of providing greater transparency and usability on the path to full financial self-sovereignty. It attempts to provide all of the detail about your wallet setup, transactions and UTXOs so that you can transact with a full understanding of your money." wrapText="true" />
-            <Label text="Sparrow can operate in both an online and offline mode. In the online mode it connects to a full node or Electrum server to display transaction history. In the offline mode it is useful as a transaction editor and as an airgapped multisig coordinator." wrapText="true" />
-            <Label text="While it's possible to connect to a public Electrum server, connecting Sparrow to your own full node ensures your privacy, while connecting Sparrow to your private Electrum server ensures wallets load quicker, you have access to a full blockchain explorer, and your public keys are always encrypted on disk." wrapText="true" />
-            <HBox><Label text="If you find Sparrow useful, consider donating at "/><Hyperlink text="https://sparrowwallet.com/donate" onAction="#openDonate"/></HBox>
+            <Label text="This build follows the BLAKE2b chain, which changed its proof of work at block 961,640. Coins created before then also exist on the SHA256d chain, and an ordinary transaction is valid on both, so this build shows whether each transaction is replay protected. It refuses a server on the SHA256d chain." wrapText="true" />
+            <Label text="It connects only to a server of your own: a BLAKE2b node directly, or an Electrum server backed by one. In the offline mode it is useful as a transaction editor and as an airgapped multisig coordinator." wrapText="true" />
+            <HBox><Label text="Source, documentation and bug reports: "/><Hyperlink text="github.com/paulscode/sparrow" onAction="#openRepository"/></HBox>
+            <Label text="Releases are signed with key FF76 D484 3EBD 7FA0 6D92 DC0C B8AB 7B8E 7E28 0E1A." wrapText="true" />
+            <HBox><Label text="Based on upstream Sparrow, by Craig Raw. To support it: "/><Hyperlink text="sparrowwallet.com/donate" onAction="#openDonate"/></HBox>
         </VBox>
         <HBox styleClass="button-area" alignment="BOTTOM_RIGHT" VBox.vgrow="SOMETIMES">
             <Button text="Close" onAction="#close" />

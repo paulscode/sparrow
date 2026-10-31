@@ -340,7 +340,8 @@ public class DevicePane extends TitledDescriptionPane {
                 }
                 importMenuButton.getItems().add(new SeparatorMenuItem());
                 MenuItem discoverItem = new MenuItem("Discover Wallet...");
-                discoverItem.setDisable(!AppServices.isConnected());
+                //The Full Node mode cannot discover a wallet, and said so only after the search
+                discoverItem.setDisable(!AppServices.isConnected() || Config.get().getServerType() == ServerType.BITCOIN_CORE);
                 discoverItem.setOnAction(_ -> discoverWallet());
                 importMenuButton.getItems().add(discoverItem);
             } else {

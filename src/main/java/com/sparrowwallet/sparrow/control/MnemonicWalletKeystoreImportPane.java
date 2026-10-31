@@ -18,6 +18,7 @@ import com.sparrowwallet.sparrow.net.ServerType;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.beans.property.SimpleBooleanProperty;
 import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.layout.HBox;
@@ -56,18 +57,20 @@ public class MnemonicWalletKeystoreImportPane extends MnemonicKeystorePane {
     protected List<Node> createRightButtons() {
         discoverButton = new Button("Discover Wallet");
         discoverButton.setDisable(true);
-        discoverButton.setDefaultButton(AppServices.onlineProperty().get());
+        //The Full Node mode cannot discover a wallet, and said so only after the search
+        boolean canDiscover = Config.get().getServerType() != ServerType.BITCOIN_CORE;
+        discoverButton.setDefaultButton(canDiscover && AppServices.onlineProperty().get());
         discoverButton.managedProperty().bind(discoverButton.visibleProperty());
         discoverButton.setOnAction(event -> {
             discoverWallet();
         });
         discoverButton.managedProperty().bind(discoverButton.visibleProperty());
         discoverButton.setTooltip(new Tooltip("Look for existing transactions from the provided word list"));
-        discoverButton.visibleProperty().bind(AppServices.onlineProperty());
+        discoverButton.visibleProperty().bind(AppServices.onlineProperty().and(new SimpleBooleanProperty(canDiscover)));
 
         importButton = new Button("Import Wallet");
         importButton.setDisable(true);
-        importButton.setDefaultButton(!AppServices.onlineProperty().get());
+        importButton.setDefaultButton(!canDiscover || !AppServices.onlineProperty().get());
         importButton.managedProperty().bind(importButton.visibleProperty());
         importButton.visibleProperty().bind(discoverButton.visibleProperty().not());
         importButton.setOnAction(event -> {

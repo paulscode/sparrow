@@ -49,12 +49,12 @@ public class ElectrumServerService {
             throw new UnsupportedVersionException(version);
         }
 
-        return List.of(Cormorant.SERVER_NAME + " " + SparrowWallet.APP_VERSION, MIN_VERSION.get());
+        return List.of(Cormorant.SERVER_NAME + " " + SparrowWallet.APP_VERSION + SparrowWallet.APP_VERSION_SUFFIX, MIN_VERSION.get());
     }
 
     @JsonRpcMethod("server.banner")
     public String getServerBanner() {
-        return Cormorant.SERVER_NAME + " " + SparrowWallet.APP_VERSION + "\n" + bitcoindClient.getNetworkInfo().subversion() + (bitcoindClient.getNetworkInfo().networkactive() ? "" : " (disconnected)");
+        return Cormorant.SERVER_NAME + " " + SparrowWallet.APP_VERSION + SparrowWallet.APP_VERSION_SUFFIX + "\n" + bitcoindClient.getNetworkInfo().subversion() + (bitcoindClient.getNetworkInfo().networkactive() ? "" : " (disconnected)");
     }
 
     @JsonRpcMethod("server.features")
@@ -64,7 +64,7 @@ public class ElectrumServerService {
             features.hosts = Map.of(ElectrumServer.CORE_ELECTRUM_HOST, Map.of("tcp_port", electrumPort));
             features.genesis_hash = bitcoindClient.getBitcoindService().getBlockHash(0);
             features.hash_function = "sha256";
-            features.server_version = Cormorant.SERVER_NAME + " " + SparrowWallet.APP_VERSION;
+            features.server_version = Cormorant.SERVER_NAME + " " + SparrowWallet.APP_VERSION + SparrowWallet.APP_VERSION_SUFFIX;
             features.protocol_min = MIN_VERSION.get();
             features.protocol_max = MAX_VERSION.get();
             features.pruning = bitcoindClient.isPruned() ? bitcoindClient.getPruneHeight() : null;

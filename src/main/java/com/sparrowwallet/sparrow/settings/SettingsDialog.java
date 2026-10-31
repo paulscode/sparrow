@@ -42,8 +42,10 @@ public class SettingsDialog extends Dialog<Boolean> {
             dialogPane.getButtonTypes().addAll(closeButtonType);
 
             final ButtonType newWalletButtonType = new javafx.scene.control.ButtonType("Create New Wallet", ButtonBar.ButtonData.OK_DONE);
+            //Most people arriving here already have a wallet, in upstream Sparrow or on a device
+            final ButtonType importWalletButtonType = new javafx.scene.control.ButtonType("Import Wallet", ButtonBar.ButtonData.OTHER);
             if(initialSetup) {
-                dialogPane.getButtonTypes().addAll(newWalletButtonType);
+                dialogPane.getButtonTypes().addAll(importWalletButtonType, newWalletButtonType);
             }
 
             dialogPane.setPrefWidth(750);
@@ -59,7 +61,8 @@ public class SettingsDialog extends Dialog<Boolean> {
                 }
             });
 
-            setResultConverter(dialogButton -> dialogButton == newWalletButtonType ? Boolean.TRUE : null);
+            //True to create a wallet, false to import one, null for neither
+            setResultConverter(dialogButton -> dialogButton == newWalletButtonType ? Boolean.TRUE : dialogButton == importWalletButtonType ? Boolean.FALSE : null);
         } catch(IOException e) {
             throw new RuntimeException(e);
         }

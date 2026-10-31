@@ -39,7 +39,7 @@
                         </FXCollections>
                     </items>
                 </ComboBox>
-                <HelpLabel helpText="Recommended fee rates can be sourced from your connected Electrum server, or an external source."/>
+                <HelpLabel helpText="Recommended fee rates come from your connected server, or the minimum relay fee rate.\nExternal fee rate sources are not offered, because they follow the SHA256d chain."/>
             </Field>
             <Field text="Block explorer:">
                 <ComboBox fx:id="blockExplorers" />
@@ -59,6 +59,7 @@
                         </FXCollections>
                     </items>
                 </ComboBox>
+                <HelpLabel helpText="Neoxa prices BTCB2 in US dollars from its own market, at neoxa.exchange.\nThe list of currencies, and the conversion from dollars into the others, come from api.coingecko.com.\nSources that price BTC on the SHA256d chain are not offered."/>
                 <Label fx:id="currenciesLoadWarning" text="Error retrieving currencies">
                     <graphic>
                         <Glyph fontFamily="Font Awesome 5 Free Solid" fontSize="12" icon="EXCLAMATION_TRIANGLE" styleClass="field-warning" />

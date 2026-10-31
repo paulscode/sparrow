@@ -138,6 +138,9 @@ public class SparrowWallet {
             Network.set(Network.SIGNET);
         }
 
+        //So that a log attached to a bug report says which build wrote it
+        getLogger().info("Starting " + APP_DISPLAY_NAME + " " + APP_VERSION + APP_VERSION_SUFFIX + " on " + Network.get() + ", Java " + Runtime.version()
+                + ", " + System.getProperty("os.name") + " " + System.getProperty("os.version") + " (" + System.getProperty("os.arch") + ")");
         if(Network.get() != Network.MAINNET) {
             getLogger().info("Using " + Network.get() + " configuration");
         }
