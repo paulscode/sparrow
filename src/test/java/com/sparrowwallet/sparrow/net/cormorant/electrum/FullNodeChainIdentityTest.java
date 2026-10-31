@@ -74,6 +74,9 @@ public class FullNodeChainIdentityTest {
         BitcoindClientService node = stubNode(Map.of(), Map.of());
 
         Assertions.assertNull(ElectrumServerService.getBlake2bFork(node));
+
+        BitcoindClientService noHeaders = stubNode(Map.of(961639, "a".repeat(64), 961640, MAINNET_FORK_BLOCK), Map.of());
+        Assertions.assertNull(ElectrumServerService.getBlake2bFork(noHeaders), "a hash without its header is no answer either");
     }
 
     /** Not retried every 15 seconds as though it might fix itself, and short in the status bar. */

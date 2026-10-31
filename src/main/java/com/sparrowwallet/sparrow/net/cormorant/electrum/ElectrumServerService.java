@@ -93,7 +93,7 @@ public class ElectrumServerService {
             String hash = node.getBlockHash(height);
             String header = node.getBlockHeader(hash, false);
             String parent = node.getBlockHeader(node.getBlockHash(height - 1), false);
-            if(header.length() / 2 != BlockHeaderV2.HEADER_V2_LENGTH || parent.length() / 2 != BlockHeaderV2.HEADER_V1_LENGTH) {
+            if(header == null || parent == null || header.length() / 2 != BlockHeaderV2.HEADER_V2_LENGTH || parent.length() / 2 != BlockHeaderV2.HEADER_V1_LENGTH) {
                 return null;
             }
 

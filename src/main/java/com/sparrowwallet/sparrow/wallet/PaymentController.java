@@ -877,7 +877,8 @@ public class PaymentController extends WalletFormController implements Initializ
      * properties, it says nothing about which chain it is for, and whoever made it most likely expects the SHA256d chain.
      */
     public void markFromRequest() {
-        requestAddressProperty.set(address.getText());
+        String text = address.getText();
+        requestAddressProperty.set(text == null || text.isEmpty() ? null : text);
     }
 
     public void setPayjoinURI(BitcoinURI bitcoinURI) {

@@ -1264,49 +1264,13 @@ public class AppController implements Initializable {
 
     public void openWalletFile(File file, boolean forceSameWindow) {
         if(UpstreamWallets.isUpstreamFile(file)) {
-            file = copyUpstreamWallet(file);
+            file = UpstreamWallets.offerCopy(file);
             if(file == null) {
                 return;
             }
         }
 
         loadWalletFile(file, forceSameWindow);
-    }
-
-    /**
-     * Offers to copy a wallet file of upstream Sparrow's into this build's wallets folder, and returns the copy, or null if
-     * it is not to be opened. Opened in place, it would be migrated to this build's database schema, which upstream may
-     * not be able to read, and filled with this chain's history.
-     */
-    private static File copyUpstreamWallet(File file) {
-        ButtonType copy = new ButtonType("Copy and Open", ButtonBar.ButtonData.OK_DONE);
-        Optional<ButtonType> optType = AppServices.showWarningDialog("Wallet from upstream Sparrow",
-                file.getName() + " is in upstream Sparrow's folder.\n\nOpening it here would change it in ways upstream Sparrow may not be able to read, "
-                        + "and fill it with the BLAKE2b chain's transactions. Sparrow (BLAKE2b) can open a copy instead, in its own wallets folder, "
-                        + "and leave the original as it is.\n\nClose the wallet in upstream Sparrow first, so the copy is complete.", ButtonType.CANCEL, copy);
-        if(optType.isEmpty() || optType.get() != copy) {
-            //Otherwise a wallet reopened at startup would ask again every time, with nothing else open to replace it in the list
-            List<File> recentWalletFiles = Config.get().getRecentWalletFiles();
-            if(recentWalletFiles != null && recentWalletFiles.contains(file)) {
-                List<File> remaining = new ArrayList<>(recentWalletFiles);
-                remaining.remove(file);
-                Config.get().setRecentWalletFiles(remaining);
-            }
-            return null;
-        }
-
-        //Earlier builds offered to make upstream's folder this one's, and a copy made there would be no copy at all
-        if(Config.get().getWalletsDir() != null && UpstreamWallets.isUpstreamFile(Config.get().getWalletsDir())) {
-            Config.get().setWalletsDir(null);
-        }
-
-        try {
-            return UpstreamWallets.copyInto(file, Storage.getWalletsDir());
-        } catch(IOException e) {
-            log.error("Error copying " + file.getAbsolutePath(), e);
-            AppServices.showErrorDialog("Could not copy the wallet", e.getMessage());
-            return null;
-        }
     }
 
     private void loadWalletFile(File file, boolean forceSameWindow) {

@@ -26,7 +26,7 @@ Done on the `installers` branch, for the next release (2.5.6-blake2b.8):
 - **#3:**
   - Requesting a payjoin without replay protection now asks first.
   - The send screen notes when a payment came from a `bitcoin:` link, a name or a payment code.
-- **#4:** upstream Sparrow's wallets are copied into this app's wallets folder, never opened in place.
+- **#4:** upstream Sparrow's wallets are copied into this app's wallets folder, never opened in place, on the desktop and in the terminal interface alike.
   - A wallets folder that an earlier build made upstream's is dropped from the settings before copying.
   - A home given with `--dir` inside upstream's folder still opens its own wallets in place.
 - **#5:** a server that answers for another chain raises `ChainMismatchException`, a configuration

@@ -14,6 +14,7 @@ import com.sparrowwallet.sparrow.event.StorageEvent;
 import com.sparrowwallet.sparrow.event.TimedEvent;
 import com.sparrowwallet.sparrow.io.Config;
 import com.sparrowwallet.sparrow.io.Storage;
+import com.sparrowwallet.sparrow.io.UpstreamWallets;
 import com.sparrowwallet.sparrow.terminal.settings.GeneralDialog;
 import com.sparrowwallet.sparrow.terminal.settings.ServerStatusDialog;
 import com.sparrowwallet.sparrow.terminal.settings.ServerTypeDialog;
@@ -58,7 +59,7 @@ public class MasterActionListBox extends ActionListBox {
                         Storage existingStorage = AppServices.get().getOpenWallets().get(wallet);
                         builder.addAction(storage.getWalletName(null) + "*", () -> openLoadedWallet(existingStorage, optWallet.get()));
                     } else {
-                        builder.addAction(storage.getWalletName(null), new LoadWallet(storage));
+                        builder.addAction(storage.getWalletName(null), () -> openWalletFile(recentWalletFile));
                     }
                 }
             }
@@ -136,9 +137,21 @@ public class MasterActionListBox extends ActionListBox {
         openBuilder.setSelectedFile(Storage.getWalletsDir());
         File file = openBuilder.build().showDialog(SparrowTerminal.get().getGui());
         if(file != null) {
-            LoadWallet loadWallet = new LoadWallet(new Storage(file));
-            SparrowTerminal.get().getGuiThread().invokeLater(loadWallet);
+            openWalletFile(file);
         }
+    }
+
+    /** Opens the wallet file, or a copy of it if it is upstream Sparrow's, as the desktop does. */
+    private static void openWalletFile(File file) {
+        if(UpstreamWallets.isUpstreamFile(file)) {
+            file = UpstreamWallets.offerCopy(file);
+            if(file == null) {
+                return;
+            }
+        }
+
+        LoadWallet loadWallet = new LoadWallet(new Storage(file));
+        SparrowTerminal.get().getGuiThread().invokeLater(loadWallet);
     }
 
     private static void createWallet() {
