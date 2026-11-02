@@ -30,9 +30,16 @@ The installers install beside upstream Sparrow rather than over it: the Linux pa
 `sparrowwallet-blake2b` and `sparrowserver-blake2b` and install to their own directories under
 `/opt`, and on Windows the app is installed and registered as "Sparrow BLAKE2b". On Windows, links
 such as `bitcoin:` payment requests are offered to this app through Settings, Apps, Default apps,
-rather than taken over from whichever app opens them now. The macOS and Windows builds are not
-signed: macOS asks you to right-click the app and choose Open the first time, and Windows may show a
-SmartScreen warning.
+rather than taken over from whichever app opens them now.
+
+The macOS and Windows builds are not signed with a developer certificate. Windows may show a
+SmartScreen warning. On macOS, an app downloaded from the internet that isn't signed this way is
+reported as "damaged" and won't open, though nothing is wrong with it. After verifying the download
+(below), drag the app to Applications and run this once in Terminal:
+
+```
+xattr -dr com.apple.quarantine "/Applications/Sparrow BLAKE2b.app"
+```
 
 Verify them before installing:
 
